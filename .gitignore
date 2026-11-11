@@ -1,0 +1,30 @@
+# ---------- 环境 ----------
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---------- 密钥与本地配置 ----------
+.env
+.env.local
+
+# ---------- 运行产物 ----------
+logs/
+data/index/
+data/audio/
+data/traces/
+*.db
+
+# ---------- 课程资料 ----------
+# 含明文 API Key，且与代码无关，不入库
+参考资料/
+
+# ---------- 工具与系统 ----------
+.workbuddy/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

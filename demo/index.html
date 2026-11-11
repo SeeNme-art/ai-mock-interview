@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 模拟面试 · 功能演示</title>
+<style>
+:root{
+  --bg:#F6F6F3; --surface:#fff; --line:#E6E5DF; --line2:#D3D1C7; --line3:#EFEEE9;
+  --ink:#1C1C1A; --ink2:#5F5E5A; --ink3:#8A8983;
+  --blue:#185FA5; --blue2:#042C53; --bluebg:#E6F1FB; --blueline:#B5D4F4;
+  --teal:#1D9E75; --tealbg:#E1F5EE; --teald:#085041; --teall:#0F6E56;
+  --amber:#BA7517; --amberbg:#FAEEDA;
+  --red:#A32D2D; --redbg:#FCEBEB;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink); font-size:14px; line-height:1.6;
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1{font-size:22px;font-weight:500;margin:0 0 8px;letter-spacing:-.01em}
+h3{font-size:15px;font-weight:500;margin:26px 0 12px}
+.sub{color:var(--ink2);font-size:13px;margin:0}
+.topbar{position:sticky;top:0;z-index:60;height:56px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;background:rgba(246,246,243,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;font-weight:500}
+.logo{width:26px;height:26px;border-radius:8px;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:12px}
+.demo-badge{font-size:11px;color:var(--amber);background:var(--amberbg);border:1px solid #FAC775;padding:1px 8px;border-radius:999px;font-weight:400}
+.screen{display:none}
+.screen.active{display:block;animation:fade .35s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.wrap{max-width:780px;margin:0 auto;padding:36px 20px 90px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px}
+.field{margin-bottom:16px}
+.field>label{display:block;font-size:12px;color:var(--ink2);margin-bottom:7px}
+.two{display:flex;gap:16px;flex-wrap:wrap}
+.two>.field{flex:1;min-width:200px}
+input[type=text],textarea{width:100%;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;
+  font:inherit;color:var(--ink);background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+input[type=text]:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(24,95,165,.1)}
+textarea{resize:vertical;line-height:1.75}
+.seg{display:inline-flex;background:var(--line3);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:6px 15px;border-radius:8px;font:inherit;font-size:13px;color:var(--ink2);cursor:pointer}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.btn{border:1px solid var(--line2);background:#fff;color:var(--ink);padding:9px 18px;border-radius:10px;
+  font:inherit;font-size:13px;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--ink3)}
+.btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.primary:hover{background:#14508c;border-color:#14508c}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--blue);padding:5px 10px}
+.btn.ghost:hover{background:var(--bluebg)}
+.drop{border:1px dashed var(--line2);border-radius:12px;padding:16px;text-align:center;color:var(--ink3);
+  font-size:13px;cursor:pointer;background:#FBFAF7;transition:all .15s}
+.drop:hover{border-color:var(--blue);color:var(--blue)}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;background:var(--tealbg);
+  color:var(--teald);border:1px solid #9FE1CB;line-height:1.7}
+.tag.blue{background:var(--bluebg);color:var(--blue2);border-color:var(--blueline)}
+.tag.gray{background:var(--line3);color:var(--ink2);border-color:var(--line2)}
+.step{display:flex;gap:12px;align-items:center;padding:9px 0;font-size:13px;color:var(--ink3);transition:color .3s}
+.step.done{color:var(--ink)}
+.step.on{color:var(--blue)}
+.step .dot{width:18px;height:18px;border-radius:50%;border:1px solid var(--line2);display:grid;
+  place-items:center;font-size:10px;flex:0 0 auto;transition:all .3s}
+.step.on .dot{border-color:var(--blue);color:var(--blue);animation:pulse 1s infinite}
+.step.done .dot{background:var(--teal);border-color:var(--teal);color:#fff}
+@keyframes pulse{50%{opacity:.4}}
+.bar{height:4px;background:var(--line3);border-radius:999px;overflow:hidden;margin-top:8px}
+.bar>i{display:block;height:100%;width:0;background:var(--blue);transition:width .5s ease}
+.qcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;gap:16px}
+.qcard .idx{width:26px;height:26px;border-radius:8px;background:var(--bg);border:1px solid var(--line);
+  display:grid;place-items:center;font-size:12px;color:var(--ink2);flex:0 0 auto}
+.qcard .body{flex:1;min-width:0}
+.qcard .meta{display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
+.qcard p{margin:0;font-size:14px;line-height:1.75}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:5px;height:5px;border-radius:50%;background:var(--line2);display:block}
+.dots i.f{background:var(--amber)}
+.room{max-width:1080px;margin:0 auto;padding:20px 20px 30px;display:grid;
+  grid-template-columns:264px 1fr;gap:22px;align-items:start}
+.side{position:sticky;top:76px;display:flex;flex-direction:column;gap:14px}
+.side .card{padding:16px}
+.side h4{margin:0 0 10px;font-size:12px;color:var(--ink3);font-weight:500}
+.pitem{display:flex;gap:9px;align-items:center;font-size:13px;color:var(--ink3);padding:6px 0}
+.pitem .n{width:18px;height:18px;border-radius:50%;border:1px solid var(--line2);display:grid;
+  place-items:center;font-size:10px;flex:0 0 auto;transition:all .25s}
+.pitem.on{color:var(--ink);font-weight:500}
+.pitem.on .n{border-color:var(--blue);color:var(--blue)}
+.pitem.done .n{background:var(--teal);border-color:var(--teal);color:#fff}
+.pitem.done{color:var(--ink2)}
+.kv{font-size:12px;color:var(--ink2);line-height:2}
+.kv b{color:var(--ink);font-weight:500}
+.stages{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.pill{font-size:11px;padding:3px 9px;border-radius:999px;background:var(--line3);color:var(--ink3);transition:all .25s}
+.pill.on{background:var(--blue);color:#fff}
+.pill.done{background:var(--tealbg);color:var(--teald)}
+.chat{display:flex;flex-direction:column;gap:14px}
+.row{display:flex;gap:10px;align-items:flex-start;max-width:92%}
+.row.me{align-self:flex-end;flex-direction:row-reverse}
+.avatar{width:28px;height:28px;border-radius:9px;background:var(--blue);color:#fff;display:grid;
+  place-items:center;font-size:11px;flex:0 0 auto}
+.avatar.mine{background:var(--teal)}
+.bubble{background:#fff;border:1px solid var(--line);border-radius:4px 14px 14px 14px;padding:12px 15px;
+  font-size:14px;line-height:1.8;word-break:break-word}
+.row.me .bubble{background:var(--bluebg);border-color:var(--blueline);border-radius:14px 4px 14px 14px}
+.sysline{align-self:center;font-size:12px;color:var(--ink3);display:flex;align-items:center;gap:8px}
+.chunks{margin-top:11px;background:#FAFAF7;border:1px dashed var(--line2);border-radius:10px;padding:9px 12px}
+.chunks .hd{font-size:11px;color:var(--ink3);cursor:pointer;user-select:none}
+.chunks .ck{font-size:12px;color:var(--ink2);line-height:1.7;padding:3px 0 3px 10px;border-left:2px solid var(--teal);margin-top:6px}
+.chunks.fold .ck{display:none}
+.wave{display:inline-flex;align-items:center;gap:2px;height:16px}
+.wave i{width:3px;height:5px;border-radius:2px;background:var(--ink3);display:block}
+.wave.on i{animation:jump .9s ease-in-out infinite}
+.wave.blue i{background:var(--blue)}
+.wave.teal i{background:var(--teal)}
+@keyframes jump{0%,100%{height:5px}50%{height:15px}}
+.composer{position:sticky;bottom:0;padding:16px 0 18px;background:linear-gradient(to top,var(--bg) 62%,rgba(246,246,243,0))}
+.composer .box{background:#fff;border:1px solid var(--line2);border-radius:14px;padding:10px 12px;transition:border-color .15s}
+.composer .box:focus-within{border-color:var(--blue)}
+.composer textarea{border:0;padding:2px 0;resize:none;min-height:54px;box-shadow:none!important;font-size:14px}
+.composer .bar2{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px}
+.iconbtn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);background:#fff;
+  border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;color:var(--ink2);cursor:pointer;transition:all .15s;user-select:none}
+.iconbtn:hover:not(:disabled){border-color:var(--ink3)}
+.iconbtn:disabled{opacity:.45;cursor:not-allowed}
+.iconbtn.rec{background:var(--redbg);border-color:#F7C1C1;color:var(--red)}
+.scorebig{font-size:54px;font-weight:500;line-height:1;letter-spacing:-.03em}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.dim{margin-bottom:13px}
+.dim .l{display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);margin-bottom:5px}
+.dim .b{height:6px;background:var(--line3);border-radius:999px;overflow:hidden}
+.dim .b>i{display:block;height:100%;background:var(--blue);border-radius:999px;width:0;transition:width .8s ease}
+.acc{border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;margin-bottom:10px}
+.acc .h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;font-size:13px}
+.acc .h .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc .c{padding:0 16px 16px;font-size:13px;color:var(--ink2);line-height:1.85;display:none;border-top:1px dashed transparent}
+.acc.open .c{display:block}
+.acc .c .lb{font-size:11px;color:var(--ink3);margin:10px 0 3px}
+.acc .c .q{color:var(--ink)}
+.list{margin:0;padding-left:18px;font-size:13px;line-height:1.95;color:var(--ink2)}
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,10px);background:#2C2C2A;color:#fff;
+  font-size:13px;padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:all .25s;z-index:99}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media(max-width:880px){
+  .room{grid-template-columns:1fr}
+  .side{position:static;order:2}
+  .grid2{grid-template-columns:1fr}
+  .row{max-width:100%}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">面</div>
+    <span>AI 模拟面试</span>
+    <span class="demo-badge">演示模式</span>
+  </div>
+  <button class="btn" id="btnVoice" style="padding:6px 13px;font-size:12px">语音：开</button>
+</header>
+
+<main>
+
+<section id="screen-setup" class="screen active">
+  <div class="wrap">
+    <h1>开始一场模拟面试</h1>
+    <p class="sub">填写岗位与简历。JD、简历、面经逐字稿会统一建成知识库，出题与评分都基于它。</p>
+
+    <div class="card" style="margin-top:22px">
+      <div class="field">
+        <label>目标岗位</label>
+        <input type="text" id="jobTitle" value="AI 应用工程师">
+      </div>
+
+      <div class="two">
+        <div class="field">
+          <label>级别</label>
+          <div class="seg" data-seg="level">
+            <button>初级</button><button class="on">中级</button><button>高级</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>题目数量</label>
+          <div class="seg" data-seg="count">
+            <button class="on">3 题</button><button>5 题</button><button>8 题</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>岗位 JD</label>
+        <textarea id="jobJd" rows="4">岗位：AI 应用工程师（中级）
+职责：负责 LangChain Agent 落地，搭建 RAG 知识库，设计工具调用与工程护栏，参与线上可观测与成本优化。
+要求：熟悉 Python、FastAPI；有 RAG 或 Agent 项目经验；能讲清设计权衡与故障处理。</textarea>
+      </div>
+
+      <div class="field">
+        <label>你的简历</label>
+        <textarea id="jobResume" rows="5">3 年 Python 后端经验，主要做企业内部系统。
+近期项目：基于 LangChain + DeepSeek 搭建面试问答智能体，完成文档切分、FAISS 检索、Prompt 组装与引用输出；用中间件做模型调用限流与手机号邮箱脱敏；自建 trace_id 日志排查线上问题。
+技能：Python / FastAPI / SQLAlchemy / LangChain / FAISS</textarea>
+      </div>
+
+      <div class="field" style="margin-bottom:8px">
+        <label>面经逐字稿（可选）</label>
+        <div class="drop" id="drop">点击添加 .txt / .md 面经，问答会成对切分后入库</div>
+        <div id="fileList" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:20px;align-items:center">
+      <button class="btn primary" id="btnBuild" style="padding:11px 22px">建立知识库并生成大纲</button>
+      <span style="font-size:12px;color:var(--ink3)">简历仅本地使用，手机号与邮箱会自动打码</span>
+    </div>
+  </div>
+</section>
+
+<section id="screen-ingest" class="screen">
+  <div class="wrap">
+    <h1>正在构建知识库</h1>
+    <p class="sub">三类资料统一清洗、切分、打标后写入向量索引。</p>
+    <div class="card" style="margin-top:22px">
+      <div id="steps"></div>
+      <div class="bar"><i id="ingbar"></i></div>
+    </div>
+  </div>
+</section>
+
+<section id="screen-plan" class="screen">
+  <div class="wrap">
+    <h1>面试大纲</h1>
+    <p class="sub" id="planSub"></p>
+    <div id="planList" style="display:flex;flex-direction:column;gap:12px;margin-top:20px"></div>
+    <div style="display:flex;gap:10px;margin-top:22px">
+      <button class="btn primary" id="btnStart" style="padding:11px 22px">开始面试</button>
+      <button class="btn" id="btnBack">返回修改</button>
+    </div>
+  </div>
+</section>
+
+<section id="screen-room" class="screen">
+  <div class="room">
+    <aside class="side">
+      <div class="card">
+        <h4>面试进度</h4>
+        <div id="progressList"></div>
+      </div>
+      <div class="card">
+        <h4>知识库</h4>
+        <div class="kv">
+          <div>已索引 <b>42</b> 个片段</div>
+          <div>来源 JD · 简历 · 逐字稿</div>
+          <div>召回 TopK=3 · 按来源加权</div>
+          <div>评分 Rubric <b>4 维</b> / 100 分</div>
+        </div>
+      </div>
+    </aside>
+
+    <div>
+      <div class="stages" id="stagePills"></div>
+      <div class="chat" id="chat"></div>
+
+      <div class="composer">
+        <div class="box">
+          <textarea id="answerInput" placeholder="输入你的回答，或点右侧「按住说话」"></textarea>
+          <div class="bar2">
+            <div id="statusText" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink3);min-height:20px"></div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="iconbtn" id="btnMic" disabled>按住说话</button>
+              <button class="btn primary" id="btnSubmit" disabled>提交回答</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="screen-report" class="screen">
+  <div class="wrap" style="max-width:900px">
+    <h1>面试报告</h1>
+    <p class="sub" id="reportSub"></p>
+
+    <div class="card" style="margin-top:20px;display:grid;grid-template-columns:180px 1fr;gap:26px;align-items:center">
+      <div>
+        <div class="scorebig" id="totalScore">0</div>
+        <div style="font-size:12px;color:var(--ink3);margin-top:4px">总分 / 100</div>
+        <div style="margin-top:12px"><span class="tag" id="gradeTag">—</span></div>
+      </div>
+      <div id="radarBox" style="display:flex;justify-content:center"></div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px">
+      <div class="card">
+        <h4 style="margin:0 0 14px;font-size:12px;color:var(--ink3);font-weight:500">维度得分</h4>
+        <div id="dimBox"></div>
+      </div>
+      <div class="card">
+        <h4 style="margin:0 0 12px;font-size:12px;color:var(--ink3);font-weight:500">本次亮点</h4>
+        <ul class="list">
+          <li>能区分「召回问题」与「生成问题」，排查有明确顺序</li>
+          <li>对中间件的定位准确：护栏，而不是功能</li>
+          <li>提到用固定样本测召回命中率，有工程意识</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>逐题明细</h3>
+    <div id="accList"></div>
+
+    <div class="grid2" style="margin-top:6px">
+      <div class="card">
+        <h4 style="margin:0 0 12px;font-size:12px;color:var(--ink3);font-weight:500">主要短板</h4>
+        <ul class="list">
+          <li>结论多停留在「我觉得」，缺少可量化指标</li>
+          <li>限流触发后的降级策略没讲清，只说了「限制」</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4 style="margin:0 0 12px;font-size:12px;color:var(--ink3);font-weight:500">学习路径</h4>
+        <ul class="list">
+          <li>给 RAG 建 20 条评估集，算命中率与 MRR</li>
+          <li>把「触发 → 降级 → 告警」写成一条链路讲一遍</li>
+          <li>补一版 trace 字段设计，说清每类事件记什么</li>
+        </ul>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:24px">
+      <button class="btn primary" id="btnExport">导出报告</button>
+      <button class="btn" id="btnRestart">再来一场</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+let VOICE_ON = true;
+let plan = [];
+let cur = 0;
+let probed = false;
+let answers = [];
+let results = [];
+
+const STAGE_ORDER = ['SETUP','PLANNING','ASKING','PROBING','SCORING','REPORT'];
+const STAGE_CN = {SETUP:'配置面试',PLANNING:'生成大纲',ASKING:'出题提问',PROBING:'追问深挖',SCORING:'逐题评分',REPORT:'全场报告'};
+
+const QUESTIONS = [
+  {
+    dim: 'RAG · 工程化', level: 2,
+    variants: [
+      '你简历里写了用 LangChain 做过面试问答的 RAG 项目。如果同一份简历问答经常召回不到正确片段，你会怎么排查是召回的问题还是生成的问题？',
+      '假设线上用户反馈「回答答非所问」，在你的 RAG 系统里，你会按什么顺序定位问题？'
+    ],
+    probe: '你提到要区分召回和生成。那如果召回片段是对的、模型却答偏了，你下一步是改 Prompt 还是换模型？依据是什么？',
+    chunks: [
+      '[题库] chunk_size 过大时单块语义被平均，向量区分度下降，表现为「召回了但答偏」。',
+      '[逐字稿] 排查顺序：先看 TOOL_CALL 里的召回片段是否相关，再看 Prompt 是否把片段正确拼接。',
+      '[题库] 常见失效场景：口语化提问、专有名词、跨文档多跳问题。'
+    ],
+    answer: '我先看召回片段本身对不对。如果 TopK 回来的片段和问题根本不相关，那是切分粒度或 embedding 的问题；如果片段是对的但模型答偏了，问题就在 Prompt 约束和上下文拼接顺序。我一般会把 trace 里 TOOL_CALL 的召回结果打出来对照。',
+    score: {acc:22, depth:20, struct:19, fit:19},
+    feedback: '思路正确，把「召回问题」和「生成问题」分开定位是关键。但没给可量化的验证方式，结论偏主观。',
+    must: ['补一个可量化的召回命中率指标', '说明你会用哪批样本做对照实验']
+  },
+  {
+    dim: 'Agent · 护栏', level: 2,
+    variants: [
+      '你在项目里给 Agent 加了中间件。能说说 Agent 在什么情况下必须要护栏？你的限流具体在防什么？',
+      '如果让你给一个已经上线的 Agent 加三道护栏，你会加哪三道？为什么是这三道？'
+    ],
+    probe: '限流真的触发之后，你是让 Agent 直接报错，还是优雅收尾？为什么这么选？',
+    chunks: [
+      '[笔记] 企业级 Agent 流程：用户输入 → 中间件（限制/审核/兜底）→ Agent 核心 → 中间件（校验/打码/终止）→ 输出。',
+      '[题库] 模型调用限流防死循环，工具调用限流防成本失控与第三方封号。',
+      '[逐字稿] 面试官追问点：护栏触发了，业务上是报错、降级还是转人工。'
+    ],
+    answer: '中间件本质是给 Agent 加护栏，不是加功能。我项目里的限流主要防两件事：一是模型调用死循环，用户一直说「再详细点」，Agent 会反复调工具；二是工具被刷，检索接口一次请求被调十几次，成本和下游压力都顶不住。',
+    score: {acc:21, depth:19, struct:18, fit:18},
+    feedback: '对护栏的定位准确。但只讲了「限制」，没讲「触发之后怎么办」，这是面试官一定会追的点。',
+    must: ['说清限流触发后的降级动作', '补一句如何把触发事件做到可观测']
+  },
+  {
+    dim: 'RAG · 参数', level: 1,
+    variants: [
+      'RAG 里的 chunk_size 和 overlap 你会怎么调？为什么不是越大越好？',
+      '如果检索结果总是差一点，你会先动 chunk 还是先动 TopK？为什么？'
+    ],
+    probe: '你说要用固定问题集测召回，那这个测试集你会怎么构造？多少条够用？',
+    chunks: [
+      '[题库] chunk_size 太小会切断语义，太大会混入无关内容导致向量被平均。',
+      '[题库] overlap 一般取 chunk_size 的 10%–15%，避免关键信息正好被切在边界。',
+      '[逐字稿] 调参要有评估集，否则只是感觉变好了。'
+    ],
+    answer: 'chunk_size 不是越大越好。太大一个问题会混进很多无关内容，向量被平均掉、检索不准；太小又会被切断，语义不完整。我一般从 400 到 600 起步，overlap 取 10% 到 15%，然后用固定的一批问题去测召回命中率，再往上调。',
+    score: {acc:20, depth:17, struct:18, fit:17},
+    feedback: '参数区间给得合理，也提到要用评估集。但没说测试集怎么来、多少条够，深度还差一层。',
+    must: ['说清评估集的构造方式与规模', '给出一个你实际调参前后的对比数字']
+  }
+];
+
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('on'), 2200);
+}
+
+function show(id){
+  $$('.screen').forEach(e => e.classList.remove('active'));
+  $('#' + id).classList.add('active');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function speak(text){
+  if(!VOICE_ON || !('speechSynthesis' in window)) return;
+  try{
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+      try{
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'zh-CN';
+        u.rate = 1.06;
+        u.pitch = 1;
+        window.speechSynthesis.speak(u);
+      }catch(e){}
+    }, 80);
+  }catch(e){}
+}
+function stopSpeak(){
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+}
+
+$('#btnVoice').addEventListener('click', e => {
+  VOICE_ON = !VOICE_ON;
+  e.currentTarget.textContent = '语音：' + (VOICE_ON ? '开' : '关');
+  if(!VOICE_ON) stopSpeak();
+});
+
+/* ---------- 配置页 ---------- */
+$$('.seg').forEach(seg => {
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if(!b) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+  });
+});
+
+let files = [];
+$('#drop').addEventListener('click', () => {
+  files.push('面经-某厂二面.txt · 已解析 18 轮问答');
+  $('#fileList').innerHTML = files.map(f =>
+    `<div style="display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);
+     background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;margin:0 8px 8px 0">
+     <span class="tag">逐字稿</span>${f}</div>`).join('');
+  toast('已添加面经：问答将成对切分后入库');
+});
+
+$('#btnBuild').addEventListener('click', () => {
+  const cnt = $('.seg[data-seg=count] button.on').textContent.trim();
+  if(cnt !== '3 题') toast('演示模式只用 3 题跑完整流程');
+  show('screen-ingest');
+  runIngest();
+});
+
+/* ---------- 建库 ---------- */
+const INGEST_STEPS = [
+  '解析文档 · JD / 简历 / 逐字稿',
+  '清洗与脱敏 · 手机号、邮箱打码 2 处',
+  '分块打标 · 共 42 个片段',
+  '向量化入库 · bge-small-zh · 384 维'
+];
+
+async function runIngest(){
+  const box = $('#steps');
+  box.innerHTML = INGEST_STEPS.map((s, i) =>
+    `<div class="step" id="st${i}"><span class="dot">${i+1}</span><span>${s}</span></div>`).join('');
+  $('#ingbar').style.width = '0%';
+
+  for(let i = 0; i < INGEST_STEPS.length; i++){
+    const el = $('#st' + i);
+    el.classList.add('on');
+    await sleep(700);
+    el.classList.remove('on');
+    el.classList.add('done');
+    el.querySelector('.dot').textContent = '✓';
+    $('#ingbar').style.width = ((i + 1) / INGEST_STEPS.length * 100) + '%';
+  }
+  await sleep(450);
+  buildPlan();
+  show('screen-plan');
+}
+
+/* ---------- 大纲 ---------- */
+function buildPlan(){
+  plan = QUESTIONS.map(q => Object.assign({}, q, {v: 0}));
+  renderPlan();
+}
+
+function renderPlan(){
+  $('#planSub').textContent = '共 ' + plan.length + ' 题 · 覆盖 RAG / Agent / 参数调优 · 预计 12 分钟 · 可换题后再开始';
+  $('#planList').innerHTML = plan.map((q, i) => `
+    <div class="qcard">
+      <div class="idx">${i+1}</div>
+      <div class="body">
+        <div class="meta">
+          <span class="tag">${q.dim}</span>
+          <span style="font-size:11px;color:var(--ink3)">难度</span>
+          <span class="dots"><i class="f"></i><i class="${q.level>1?'f':''}"></i><i class="${q.level>2?'f':''}"></i></span>
+        </div>
+        <p id="qt${i}">${q.variants[q.v]}</p>
+        <div class="acts">
+          <button class="btn ghost" data-swap="${i}">换一题</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+$('#planList').addEventListener('click', e => {
+  const b = e.target.closest('[data-swap]');
+  if(!b) return;
+  const i = Number(b.dataset.swap);
+  plan[i].v = plan[i].v === 0 ? 1 : 0;
+  $('#qt' + i).textContent = plan[i].variants[plan[i].v];
+  toast('已换一题');
+});
+
+$('#btnBack').addEventListener('click', () => show('screen-setup'));
+
+/* ---------- 面试 ---------- */
+function setStage(s){
+  const idx = STAGE_ORDER.indexOf(s);
+  $('#stagePills').innerHTML = STAGE_ORDER.map((k, i) => {
+    const cls = i < idx ? 'done' : (i === idx ? 'on' : '');
+    return `<span class="pill ${cls}">${STAGE_CN[k]}</span>`;
+  }).join('');
+}
+
+function markProgress(){
+  $('#progressList').innerHTML = plan.map((q, i) => {
+    const st = i < cur ? 'done' : (i === cur ? 'on' : '');
+    return `<div class="pitem ${st}"><span class="n">${i < cur ? '✓' : i+1}</span><span>${q.dim}</span></div>`;
+  }).join('');
+}
+
+function scrollEnd(){
+  window.scrollTo({top: document.body.scrollHeight, behavior:'smooth'});
+}
+
+function addAi(){
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<div class="avatar">面</div><div class="bubble"><div class="txt"></div><div class="ckbox"></div></div>`;
+  $('#chat').appendChild(row);
+  scrollEnd();
+  return {txt: row.querySelector('.txt'), ck: row.querySelector('.ckbox')};
+}
+
+function addUser(text){
+  const row = document.createElement('div');
+  row.className = 'row me';
+  row.innerHTML = `<div class="avatar mine">我</div><div class="bubble"></div>`;
+  row.querySelector('.bubble').textContent = text;
+  $('#chat').appendChild(row);
+  scrollEnd();
+}
+
+function addSys(text){
+  const d = document.createElement('div');
+  d.className = 'sysline';
+  d.innerHTML = `<span class="wave blue on" id="w_sys"></span><span>${text}</span>`;
+  $('#chat').appendChild(d);
+  fillWave(d.querySelector('.wave'));
+  scrollEnd();
+  return d;
+}
+
+function fillWave(el, n){
+  n = n || 12;
+  el.innerHTML = Array.from({length: n}, (_, i) =>
+    `<i style="animation-delay:${(i * 0.07).toFixed(2)}s"></i>`).join('');
+}
+
+async function typeText(el, text){
+  el.textContent = '';
+  for(let i = 0; i < text.length; i++){
+    el.textContent += text[i];
+    if(i % 2 === 0) scrollEnd();
+    await sleep(15);
+  }
+}
+
+function chunksHTML(list){
+  return `<div class="chunks">
+    <div class="hd">召回依据 · TopK=3（点击折叠）</div>
+    ${list.map(c => `<div class="ck">${c}</div>`).join('')}
+  </div>`;
+}
+
+$('#chat').addEventListener('click', e => {
+  const hd = e.target.closest('.chunks .hd');
+  if(hd) hd.parentElement.classList.toggle('fold');
+});
+
+function setEnabled(on){
+  $('#btnMic').disabled = !on;
+  $('#btnSubmit').disabled = !on;
+  $('#answerInput').disabled = !on;
+  if(on) $('#answerInput').focus();
+}
+
+function setStatus(html){
+  $('#statusText').innerHTML = html;
+}
+
+async function askQuestion(){
+  const q = plan[cur];
+  probed = false;
+  setStage('ASKING');
+  markProgress();
+
+  const b = addAi();
+  const text = q.variants[q.v];
+  speak(text);
+  await typeText(b.txt, text);
+  b.ck.innerHTML = chunksHTML(q.chunks);
+
+  setEnabled(true);
+  setStatus('<span style="color:var(--ink3)">轮到你回答 · 可直接输入，或按住「按住说话」</span>');
+  scrollEnd();
+}
+
+$('#btnStart').addEventListener('click', async () => {
+  cur = 0; probed = false; answers = []; results = [];
+  $('#chat').innerHTML = '';
+  show('screen-room');
+  markProgress();
+  setStage('ASKING');
+  await sleep(400);
+  askQuestion();
+});
+
+$('#btnSubmit').addEventListener('click', submitAnswer);
+$('#answerInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitAnswer();
+});
+
+async function submitAnswer(){
+  const ta = $('#answerInput');
+  const val = ta.value.trim();
+  if(!val){ toast('请先输入或说一段回答'); return; }
+
+  addUser(val);
+  answers.push(val);
+  ta.value = '';
+  setEnabled(false);
+  setStatus('');
+
+  const q = plan[cur];
+
+  if(!probed && q.probe){
+    probed = true;
+    setStage('PROBING');
+    await sleep(480);
+    const b = addAi();
+    speak(q.probe);
+    await typeText(b.txt, q.probe);
+    setEnabled(true);
+    setStatus('<span style="color:var(--ink3)">追问 1/1 · 回答后进入评分</span>');
+    scrollEnd();
+    return;
+  }
+
+  await scoring();
+}
+
+async function scoring(){
+  setStage('SCORING');
+  setEnabled(false);
+  const s = addSys('本题评分中 · 四维 rubric 比对与要点校验');
+  await sleep(1400);
+  s.remove();
+
+  const q = plan[cur];
+  results.push({q: q, score: q.score, answer: answers[answers.length - 1], feedback: q.feedback, must: q.must});
+
+  const done = document.createElement('div');
+  done.className = 'sysline';
+  done.textContent = '本题已评分并记录';
+  $('#chat').appendChild(done);
+  scrollEnd();
+
+  cur++;
+  markProgress();
+
+  if(cur < plan.length){
+    await sleep(700);
+    askQuestion();
+  }else{
+    await sleep(700);
+    showReport();
+  }
+}
+
+/* ---------- 语音输入（模拟） ---------- */
+let recording = false;
+let recTimer = null;
+let recSec = 0;
+
+function startRec(){
+  if($('#btnMic').disabled || recording) return;
+  if(VOICE_ON) stopSpeak();
+  recording = true;
+  recSec = 0;
+  const btn = $('#btnMic');
+  btn.classList.add('rec');
+  btn.textContent = '松开结束';
+  setStatus('<span class="wave teal on" id="wrec"></span><span>正在录音 00:00</span>');
+  fillWave($('#wrec'));
+  recTimer = setInterval(() => {
+    recSec++;
+    const mm = String(Math.floor(recSec / 60)).padStart(2, '0');
+    const ss = String(recSec % 60).padStart(2, '0');
+    const el = $('#statusText');
+    if(el) el.innerHTML = '<span class="wave teal on" id="wrec"></span><span>正在录音 ' + mm + ':' + ss + '</span>';
+  }, 1000);
+}
+
+async function endRec(){
+  if(!recording) return;
+  recording = false;
+  clearInterval(recTimer);
+  const btn = $('#btnMic');
+  btn.classList.remove('rec');
+  btn.textContent = '按住说话';
+
+  setStatus('<span class="wave teal on" id="wrec"></span><span>语音识别中…</span>');
+  await sleep(800);
+
+  const q = plan[cur];
+  $('#answerInput').value = q.answer;
+  setStatus('<span style="color:var(--teal)">识别完成 · 请确认或修改后提交（识别结果可能有误）</span>');
+  $('#answerInput').focus();
+}
+
+$('#btnMic').addEventListener('mousedown', e => { e.preventDefault(); startRec(); });
+document.addEventListener('mouseup', () => { if(recording) endRec(); });
+$('#btnMic').addEventListener('touchstart', e => { e.preventDefault(); startRec(); }, {passive:false});
+document.addEventListener('touchend', () => { if(recording) endRec(); });
+
+/* ---------- 报告 ---------- */
+function radarSVG(dims){
+  const cx = 130, cy = 130, R = 92, n = dims.length;
+  const pt = (i, r) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / n;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  };
+  let s = '';
+  [0.25, 0.5, 0.75, 1].forEach(k => {
+    const d = dims.map((_, i) => pt(i, R * k).join(',')).join(' ');
+    s += `<polygon points="${d}" fill="none" stroke="#E6E5DF" stroke-width="1"/>`;
+  });
+  dims.forEach((_, i) => {
+    const [x, y] = pt(i, R);
+    s += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#E6E5DF" stroke-width="1"/>`;
+  });
+  const poly = dims.map((d, i) => pt(i, R * d.v / 100).join(',')).join(' ');
+  s += `<polygon points="${poly}" fill="rgba(24,95,165,0.13)" stroke="#185FA5" stroke-width="1.5"/>`;
+  dims.forEach((d, i) => {
+    const [x, y] = pt(i, R * d.v / 100);
+    s += `<circle cx="${x}" cy="${y}" r="3" fill="#185FA5"/>`;
+    const [lx, ly] = pt(i, R + 26);
+    s += `<text x="${lx}" y="${ly}" font-size="11" fill="#5F5E5A" text-anchor="middle" dominant-baseline="central">${d.label}</text>`;
+  });
+  return `<svg viewBox="0 0 260 260" width="260" height="260">${s}</svg>`;
+}
+
+function showReport(){
+  setStage('REPORT');
+  const cnt = results.length;
+  const sum = results.reduce((a, r) => a + r.score.acc + r.score.depth + r.score.struct + r.score.fit, 0);
+  const total = Math.round(sum / cnt);
+
+  const dims = [
+    {label:'正确性', key:'acc'},
+    {label:'深度', key:'depth'},
+    {label:'结构', key:'struct'},
+    {label:'岗位匹配', key:'fit'}
+  ];
+  const dimAvg = dims.map(d => {
+    const avg = results.reduce((a, r) => a + r.score[d.key], 0) / cnt;
+    return {label: d.label, v: Math.round(avg / 25 * 100), raw: avg.toFixed(1)};
+  });
+
+  $('#totalScore').textContent = total;
+  $('#gradeTag').textContent = total >= 85 ? 'A · 可直接进入二面' : (total >= 75 ? 'B · 基础扎实，深度待补' : 'C · 需重点补强');
+  $('#reportSub').textContent = $('#jobTitle').value + ' · 中级 · ' + cnt + ' 题 · 用时 11 分 24 秒';
+  $('#radarBox').innerHTML = radarSVG(dimAvg);
+
+  $('#dimBox').innerHTML = dimAvg.map(d => `
+    <div class="dim">
+      <div class="l"><span>${d.label}</span><span>${d.raw} / 25</span></div>
+      <div class="b"><i data-w="${d.v}"></i></div>
+    </div>`).join('');
+
+  $('#accList').innerHTML = results.map((r, i) => {
+    const t = r.score.acc + r.score.depth + r.score.struct + r.score.fit;
+    return `<div class="acc" data-acc="${i}">
+      <div class="h">
+        <span class="tag">${r.q.dim}</span>
+        <span class="t">第 ${i+1} 题 · ${r.q.variants[r.q.v].slice(0, 24)}…</span>
+        <span style="font-size:13px;color:var(--blue);font-weight:500">${t} 分</span>
+      </div>
+      <div class="c">
+        <div class="lb">题目</div>
+        <div class="q">${r.q.variants[r.q.v]}</div>
+        <div class="lb">你的回答</div>
+        <div>${r.answer}</div>
+        <div class="lb">点评</div>
+        <div>${r.feedback}</div>
+        <div class="lb">必改项</div>
+        <ul class="list">${r.must.map(m => `<li>${m}</li>`).join('')}</ul>
+      </div>
+    </div>`;
+  }).join('');
+
+  $$('#accList .acc').forEach(a => {
+    a.querySelector('.h').addEventListener('click', () => a.classList.toggle('open'));
+  });
+
+  show('screen-report');
+
+  setTimeout(() => {
+    $$('#dimBox .b>i').forEach(i => { i.style.width = i.dataset.w + '%'; });
+  }, 120);
+
+  const first = $('#accList .acc');
+  if(first) first.classList.add('open');
+}
+
+$('#btnExport').addEventListener('click', () => {
+  toast('已生成「面试报告.md」· 演示环境不落盘');
+});
+
+$('#btnRestart').addEventListener('click', () => {
+  stopSpeak();
+  cur = 0; probed = false; answers = []; results = [];
+  $('#chat').innerHTML = '';
+  show('screen-setup');
+});
+
+/* 初始化 */
+setStage('SETUP');
+</script>
+</body>
+</html>
