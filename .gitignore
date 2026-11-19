@@ -1,5 +1,6 @@
 # ---------- 环境 ----------
 .venv/
+.venv-langgraph/
 venv/
 __pycache__/
 *.py[cod]
@@ -16,6 +17,7 @@ logs/
 data/index/
 data/audio/
 data/traces/
+data/experiments/
 *.db
 *.db-wal
 *.db-shm

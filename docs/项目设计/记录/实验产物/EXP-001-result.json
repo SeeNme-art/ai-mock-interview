@@ -1,0 +1,147 @@
+{
+  "experiment": "EXP-001",
+  "synthetic_only": true,
+  "network_disabled_in_children": true,
+  "python": "3.12.14",
+  "versions": {
+    "langgraph": "1.2.22",
+    "langgraph-checkpoint": "4.3.2",
+    "langgraph-checkpoint-sqlite": "3.1.3",
+    "langchain-core": "1.8.3"
+  },
+  "cases": [
+    {
+      "case": "naive_interrupt_restart",
+      "status": "pass",
+      "before": {
+        "pid": 53044,
+        "pending": true,
+        "state_keys": [
+          "operation_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 1,
+        "effects": 1,
+        "completed_steps": 0
+      },
+      "wrong_thread_rejected": true,
+      "after": {
+        "pid": 55572,
+        "pending": false,
+        "state_keys": [
+          "continued",
+          "operation_id",
+          "result_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 2,
+        "effects": 2,
+        "completed_steps": 0
+      }
+    },
+    {
+      "case": "guarded_interrupt_restart",
+      "status": "pass",
+      "before": {
+        "pid": 56540,
+        "pending": true,
+        "state_keys": [
+          "operation_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 1,
+        "effects": 1,
+        "completed_steps": 1
+      },
+      "wrong_thread_rejected": true,
+      "after": {
+        "pid": 44364,
+        "pending": false,
+        "state_keys": [
+          "continued",
+          "operation_id",
+          "result_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 2,
+        "effects": 1,
+        "completed_steps": 1
+      }
+    },
+    {
+      "case": "hard_exit_after_business_commit",
+      "status": "pass",
+      "expected_exit": 73,
+      "before": {
+        "pid": 49752,
+        "pending": true,
+        "state_keys": [
+          "operation_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 1,
+        "effects": 1,
+        "completed_steps": 1
+      },
+      "after": {
+        "pid": 47360,
+        "pending": false,
+        "state_keys": [
+          "continued",
+          "operation_id",
+          "result_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 2,
+        "effects": 1,
+        "completed_steps": 1
+      }
+    },
+    {
+      "case": "fresh_checkpoint_generation_reuses_business_result",
+      "status": "pass",
+      "before": {
+        "pid": 47360,
+        "pending": false,
+        "state_keys": [
+          "continued",
+          "operation_id",
+          "result_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 2,
+        "effects": 1,
+        "completed_steps": 1
+      },
+      "after": {
+        "pid": 58000,
+        "pending": false,
+        "state_keys": [
+          "continued",
+          "operation_id",
+          "result_id",
+          "step_key"
+        ],
+        "checkpoint_marker_absent": true,
+        "visits": 3,
+        "effects": 1,
+        "completed_steps": 1
+      }
+    }
+  ],
+  "all_passed": true,
+  "limits": [
+    "single_process_per_command",
+    "sqlite_effect_only",
+    "no_real_model",
+    "no_remote_exactly_once_claim",
+    "no_production_workflow"
+  ]
+}
