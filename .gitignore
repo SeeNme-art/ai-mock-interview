@@ -17,6 +17,8 @@ data/index/
 data/audio/
 data/traces/
 *.db
+*.db-wal
+*.db-shm
 
 # ---------- 课程资料 ----------
 # 含明文 API Key，且与代码无关，不入库

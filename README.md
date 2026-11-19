@@ -1,7 +1,7 @@
 # AI 模拟面试系统
 
 面向 AI 应用 / Agent 初级岗位求职者的模拟面试项目，目标是根据岗位与个人材料提问、针对回答追问，并生成有证据的分类反馈。首版采用本地浏览器文字界面。
-这是个人学习与求职展示项目。当前已有 P0 配置、日志与链路观测代码；面试业务仍待实现，以下目标不代表已经上线或通过验收。
+这是个人学习与求职展示项目。当前 P0 配置、日志与链路观测已在本机用合成数据核验；面试业务仍待实现。P0 核验范围和复现方法见[阶段审阅单](docs/项目设计/记录/阶段审阅-P0工程基础.md)。
 
 > 当前设计：[设计总入口](docs/项目设计/README.md) · [当前交接](docs/项目设计/记录/交接文档.md)
 > 过程证据：[开发日志](docs/项目设计/记录/开发日志.md) · [问题记录](docs/项目设计/记录/问题记录.md) · [实验记录](docs/项目设计/记录/实验记录.md)
@@ -14,23 +14,22 @@
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| 历史 P0 | 骨架 / 配置 / 日志 / 链路采集 / TraceLab Viewer | 已有代码，本轮未重新运行验证 |
+| P0 基础 | 配置 / 元数据日志 / 链路采集 / TraceLab Viewer | 本机合成回归已验证，本批版本记录见 Git 历史 |
 | v2.0 设计 | 五批决策、业务与接口规范、评测计划、记录体系 | 文档已整合；不是产品发布 |
 | M0–M5 | 现状核对 → 小型 CLI 闭环 → 本地 Web → 材料与题库 → 验收交付 | 待按新版计划实施 |
 
-阶段顺序和验收条件以[评测与交付计划](docs/项目设计/05-评测与交付计划.md)为准。下方启动说明保留自 P0，M0 需复核实际环境；语音依赖属于后续方向。
+阶段顺序和验收条件以[评测与交付计划](docs/项目设计/05-评测与交付计划.md)为准。当前完成的是 P0 现状核验与观测修正；LangGraph 和真实模型小实验仍待后续阶段。语音依赖属于后续方向。
 
 ## 环境
 
-- 项目目前按 Python **3.12** 配置；实际依赖与兼容性在 M0 核对。
-- 虚拟环境目录为 `.venv/`；历史 P0 只安装了基础依赖，当前安装情况尚未复核。
+- 本轮实际环境：Windows x64、Python **3.12.14**；虚拟环境目录 `.venv/`。
+- P0 版本快照：[requirements-p0.lock.txt](requirements-p0.lock.txt)，已核对现有环境；尚未在全新环境重装验证。
 
-```bash
-# 首次
-source .venv/Scripts/activate          # Git Bash
-.venv\Scripts\activate                 # CMD / PowerShell
-
-pip install -r requirements.txt        # 或：uv pip install -r requirements.txt
+```powershell
+# 新电脑：先安装 Python 3.12，在项目根目录创建环境。
+# 已有 .venv 时直接使用，不重复创建。
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-p0.lock.txt
 ```
 
 仓库现有依赖文件分四份，按实际需要安装：
@@ -44,16 +43,24 @@ pip install -r requirements.txt        # 或：uv pip install -r requirements.tx
 
 ## 跑起来
 
-```bash
-# 1) 生成三条模拟链路（不调用模型）
-.venv/Scripts/python scripts/demo_trace.py
+```powershell
+# 在项目根目录执行；使用独立演示库，避免混入旧观测数据。
+$env:PYTHONPATH = "src"
+$env:OBSERVE_DB = "$PWD/data/p0-demo/observe.db"
+$env:LOG_DIR = "$PWD/logs/p0-demo"
+$env:OBSERVE_STORE_IO = "false"
 
-# 2) 启动服务
-PYTHONPATH=src .venv/Scripts/python -m uvicorn app.main:app --reload --port 8000
+# 生成三条模拟链路（不调用模型；重复运行会追加三条）
+.\.venv\Scripts\python.exe scripts/demo_trace.py
+
+# 在同一终端启动本机服务，Ctrl+C 停止。
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 # 3) 打开观测台
 #    http://127.0.0.1:8000/observe
 ```
+
+回归检查：`.\.venv\Scripts\python.exe -m unittest discover -s tests -v`。使用临时数据库、合成内容和随机本机端口，不需要密钥；其中一次工具失败是演示脚本故意注入的案例。
 
 ## 目录
 
@@ -77,10 +84,11 @@ scripts/demo_trace.py           # 生成模拟链路
 
 - 每条 trace 对应一轮交互，子节点是 span（模型调用、检索、语音合成…）
 - 页面提供 span 树 + 瀑布图，横向位置是相对时间，长度是耗时
-- 当前代码默认保存输入输出的前 120 字预览，与新设计的默认不保存正文约定存在差异；见 [ISSUE-001](docs/项目设计/记录/问题记录.md)。接入真实材料前须修复并验证。
+- 当前只写入元数据，输入输出为空，原始异常转为安全错误码；`OBSERVE_STORE_IO=true` 会拒绝启动。字段白名单见 `src/app/core/telemetry.py`，调用方不得把用户内容填入事件名或元数据标签。
+- 旧库中的正文读取时被隐藏，但本轮没有删除历史数据。未来 checkpoint、模型 callback 等路径尚未实现，需要另行验证。
 
 ## 日志
 
 - 控制台：`21:19:04 INFO [facd9402] trace.end duration_ms=761`
 - 落盘：`logs/app.jsonl`，单行 JSON，可 grep、可入库
-- 铁律：INFO 不落 Prompt 全文；落盘前过 PII 掩码；`except` 必须先 log 再处理
+- 普通日志只接受白名单元数据；原始异常消息和 traceback 不落盘。外部日志消息被替换为 `external.log`，调试信息减少是当前最小化策略的代价。

@@ -1,0 +1,6 @@
+# ---------- 后续模型/编排实验候选依赖；本轮未安装验证 ----------
+# 注意：LangChain v1 的包名与 v0 不同，安装前先确认版本
+langchain>=1.0,<2.0
+langchain-openai>=1.0,<2.0
+langchain-community>=0.3
+faiss-cpu>=1.9
