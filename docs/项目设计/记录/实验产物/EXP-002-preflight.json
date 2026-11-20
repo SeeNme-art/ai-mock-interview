@@ -1,0 +1,198 @@
+{
+  "plan": {
+    "experiment": "EXP-002-preparation",
+    "mode": "offline_only",
+    "live_calls_executed": 0,
+    "price_snapshot": {
+      "provider": "DeepSeek",
+      "model": "deepseek-flash",
+      "currency": "USD",
+      "checked_on": "2026-11-19",
+      "input_cache_miss_per_million": "0.3",
+      "output_per_million": "1.2",
+      "basis": "peak_rate_no_cache_discount",
+      "source": "https://api-docs.deepseek.com/quick_start/pricing/"
+    },
+    "cases": [
+      {
+        "case_id": "connection_json",
+        "request": {
+          "model": "deepseek-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "只处理合成样本，按要求输出一个 JSON 对象。"
+            },
+            {
+              "role": "user",
+              "content": "仅输出 JSON 对象 {\"ok\":true}。"
+            }
+          ],
+          "max_tokens": 256,
+          "thinking": {
+            "type": "disabled"
+          },
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "planning_input_tokens": 352,
+        "max_attempts_including_repair": 2,
+        "estimated_usd_per_attempt": "0.0004128"
+      },
+      {
+        "case_id": "extract_profile",
+        "request": {
+          "model": "deepseek-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "只处理合成样本，按要求输出一个 JSON 对象。"
+            },
+            {
+              "role": "user",
+              "content": "合成材料：掌握 Python，做过课程检索练习。提取为 JSON，字段 skills(字符串数组)、project(名称字符串)，不补经历。"
+            }
+          ],
+          "max_tokens": 256,
+          "thinking": {
+            "type": "disabled"
+          },
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "planning_input_tokens": 466,
+        "max_attempts_including_repair": 2,
+        "estimated_usd_per_attempt": "0.000447"
+      },
+      {
+        "case_id": "rewrite_question",
+        "request": {
+          "model": "deepseek-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "只处理合成样本，按要求输出一个 JSON 对象。"
+            },
+            {
+              "role": "user",
+              "content": "合成背景：做过课程检索练习。围绕如何验证召回效果问一个问题，不编造事实。仅输出 JSON {\"question\":\"问题\"}。"
+            }
+          ],
+          "max_tokens": 256,
+          "thinking": {
+            "type": "disabled"
+          },
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "planning_input_tokens": 463,
+        "max_attempts_including_repair": 2,
+        "estimated_usd_per_attempt": "0.0004461"
+      },
+      {
+        "case_id": "probe",
+        "request": {
+          "model": "deepseek-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "只处理合成样本，按要求输出一个 JSON 对象。"
+            },
+            {
+              "role": "user",
+              "content": "合成问题：如何验证检索效果？回答：感觉更准。决定是否澄清或深挖。仅输出 JSON，字段 should_probe(boolean)、purpose(clarify/deepen/check_consistency 或 null)、question(字符串或 null)。不追问时后两项为 null。"
+            }
+          ],
+          "max_tokens": 256,
+          "thinking": {
+            "type": "disabled"
+          },
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "planning_input_tokens": 575,
+        "max_attempts_including_repair": 2,
+        "estimated_usd_per_attempt": "0.0004797"
+      },
+      {
+        "case_id": "score_evidence",
+        "request": {
+          "model": "deepseek-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "只处理合成样本，按要求输出一个 JSON 对象。"
+            },
+            {
+              "role": "user",
+              "content": "合成回答：我用固定查询比较了两种分块大小。 仅检查是否有验证方法，按0至4整数评价，不合成总分。输出 JSON {\"score\":整数,\"evidence\":\"回答中的原文片段\"}。"
+            }
+          ],
+          "max_tokens": 256,
+          "thinking": {
+            "type": "disabled"
+          },
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "planning_input_tokens": 523,
+        "max_attempts_including_repair": 2,
+        "estimated_usd_per_attempt": "0.0004641"
+      },
+      {
+        "case_id": "report_suggestion",
+        "request": {
+          "model": "deepseek-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "只处理合成样本，按要求输出一个 JSON 对象。"
+            },
+            {
+              "role": "user",
+              "content": "合成评估：回答提到固定查询，未说明指标。输出 JSON {\"suggestions\":[\"具体练习建议\"]}，1至3条，不给招聘结论。"
+            }
+          ],
+          "max_tokens": 256,
+          "thinking": {
+            "type": "disabled"
+          },
+          "response_format": {
+            "type": "json_object"
+          },
+          "stream": false
+        },
+        "planning_input_tokens": 461,
+        "max_attempts_including_repair": 2,
+        "estimated_usd_per_attempt": "0.0004455"
+      }
+    ],
+    "max_proposed_http_attempts": 12,
+    "estimated_usd_all_attempts": "0.0053904",
+    "proposed_budget_usd_not_authorized": "0.02",
+    "timeout_seconds_proposed": 30,
+    "credential_check": "not_performed_by_offline_tool",
+    "limits": [
+      "estimate_not_invoice_guarantee",
+      "no_actual_provider_compatibility_test",
+      "schema_checks_not_semantic_quality",
+      "no_live_transport_or_billing_ledger_yet"
+    ]
+  },
+  "offline_validation": {
+    "positive_fixtures": 6,
+    "negative_fixtures_rejected": 10,
+    "live_calls_executed": 0,
+    "all_passed": true
+  }
+}
