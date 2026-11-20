@@ -44,8 +44,7 @@ class Settings(BaseSettings):
 
     # ---------- 模型（P2 起启用） ----------
     deepseek_api_key: str = ""
-    llm_model_main: str = "deepseek-chat"
-    llm_model_fast: str = ""  # 具体模型在后续实验验证，不假定供应商支持某个名称
+    llm_model_main: str = "deepseek-flash"
     llm_timeout_s: int = 30
     llm_max_retries: int = Field(default=1, ge=0, le=1)  # 至多两次总尝试，网关尚未实现
 

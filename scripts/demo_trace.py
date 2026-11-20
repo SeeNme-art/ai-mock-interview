@@ -30,7 +30,7 @@ def simulate_turn(index: int, fail: bool = False) -> str:
 
         with span("turn.ask", "chain"):
             with span("llm.invoke", "llm",
-                      input={"model": "deepseek-chat",
+                      input={"model": "deepseek-flash",
                              "prompt": "你是 AI 应用工程师岗位的面试官，请围绕 RAG 出一道题…"}) as s_llm:
                 time.sleep(0.42)
                 s_llm.output = {"text": "如果一份简历问答经常召回不到正确片段，你会怎么排查？"}
