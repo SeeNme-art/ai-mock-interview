@@ -29,6 +29,17 @@ def read_answer(path: Path | None) -> str:
         raise SessionError("INVALID_INPUT", "请用 UTF-8 文本提交回答") from exc
 
 
+def read_demo_proposal(path: Path) -> object:
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(32769)
+    except OSError as exc:
+        raise SessionError("CONFIGURATION_ERROR", "无法读取本地追问样例") from exc
+    if len(raw) > 32768:
+        raise ValueError("本地追问样例超过长度限制")
+    return json.loads(raw.decode("utf-8-sig"))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "interviews.db")
@@ -49,6 +60,10 @@ def main() -> int:
     answer.add_argument("--expected-revision", required=True, type=int)
     answer.add_argument("--key", required=True)
     answer.add_argument("--answer-file", type=Path)
+    process = actions.add_parser("process-answer", help="process a saved answer using an optional local demo proposal")
+    process.add_argument("session_id")
+    process.add_argument("operation_id")
+    process.add_argument("--demo-proposal-file", type=Path)
     args = parser.parse_args()
     try:
         if args.action == "answer":
@@ -57,19 +72,22 @@ def main() -> int:
         elif args.action == "state":
             result = read_state(args.db, args.session_id)
         else:
-            from app.workflow.interview import run_first_question
+            from app.workflow.interview import run_answer, run_first_question
 
             if args.action == "start":
                 operation_id, accepted = accept_start(args.db, args.session_id, args.expected_revision, args.key)
                 if accepted:
                     run_first_question(args.db, args.bank, args.session_id, operation_id)
-            else:
+            elif args.action == "resume-start":
                 run_first_question(args.db, args.bank, args.session_id, args.operation_id)
+            else:
+                proposer = (lambda _: read_demo_proposal(args.demo_proposal_file)) if args.demo_proposal_file is not None else None
+                run_answer(args.db, args.session_id, args.operation_id, proposer)
             result = read_state(args.db, args.session_id)
     except ModuleNotFoundError as exc:
         if exc.name not in {"langgraph", "langsmith"}:
             raise
-        print("首题流程需要 LangGraph，请使用已安装项目 LangGraph 依赖的 Python 环境。", file=sys.stderr)
+        print("面试流程需要 LangGraph，请使用已安装项目 LangGraph 依赖的 Python 环境。", file=sys.stderr)
         return 1
     except SessionError as exc:
         print(json.dumps({"code": exc.code, "message": str(exc), "current_revision": exc.current_revision},

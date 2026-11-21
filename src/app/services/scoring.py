@@ -26,7 +26,7 @@ class ScoredAssessment:
         return float(self.score)
 
 
-def _locate_evidence(ref: EvidenceRef, answers: Mapping[str, str]) -> EvidenceRef:
+def locate_evidence(ref: EvidenceRef, answers: Mapping[str, str]) -> EvidenceRef:
     answer = answers.get(ref.exchange_id, "")
     start = answer.find(ref.quote)
     if not ref.quote.strip() or start < 0:
@@ -64,7 +64,7 @@ def score_assessment(assessment: Assessment, *, task_type: TaskType, rubric_vers
         elif dimension.value is not None or dimension.evidence:
             raise ValueError("未考察的维度不能携带分值或答案引用")
         verified[key] = dimension.model_copy(deep=True, update={
-            "evidence": [_locate_evidence(ref, answers) for ref in dimension.evidence],
+            "evidence": [locate_evidence(ref, answers) for ref in dimension.evidence],
         })
     normalized = assessment.model_copy(deep=True, update={"dimensions": verified})
     return ScoredAssessment(normalized, tuple(dimension_values))

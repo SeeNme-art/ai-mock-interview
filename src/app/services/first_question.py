@@ -9,8 +9,8 @@ import sqlite3
 from uuid import uuid4
 
 from app.db.business import (
-    OWNER_ID, SessionError, check_business_schema, ensure_session_idle, find_replay, find_session,
-    upgrade_business, validate_request_key,
+    OWNER_ID, SessionError, check_business_schema, ensure_session_idle, find_operation, find_replay,
+    find_session, operation_epoch, upgrade_business, validate_request_key,
 )
 from app.db.sqlite import canonical_json, connect, sha256
 from app.kb.seed import prompt_key
@@ -69,22 +69,8 @@ def _first_slot(db: sqlite3.Connection, session: sqlite3.Row) -> sqlite3.Row:
     return slot
 
 
-def _start_operation(db: sqlite3.Connection, session_id: str, operation_id: str) -> sqlite3.Row:
-    operation = db.execute("""SELECT * FROM operation WHERE id=? AND session_id=? AND owner_id=? AND kind='start'""",
-                           (operation_id, session_id, OWNER_ID)).fetchone()
-    if operation is None:
-        raise SessionError("RESOURCE_NOT_FOUND", "找不到该会话的开始操作")
-    return operation
-
-
 def start_epoch(path: Path, session_id: str, operation_id: str) -> int:
-    with closing(connect(path, readonly=True)) as db, db:
-        db.execute("BEGIN")
-        version = check_business_schema(db)
-        find_session(db, session_id)
-        if version < 3:
-            raise SessionError("RESOURCE_NOT_FOUND", "找不到该会话的开始操作")
-        return _start_operation(db, session_id, operation_id)["expected_epoch"]
+    return operation_epoch(path, session_id, operation_id, "start")
 
 
 def _choose_question(db: sqlite3.Connection, bank: Path, slot: sqlite3.Row) -> tuple[dict | None, str | None]:
@@ -131,7 +117,7 @@ def prepare_first_question(path: Path, bank: Path, session_id: str, operation_id
         db.execute("BEGIN IMMEDIATE")
         check_business_schema(db)
         session = find_session(db, session_id)
-        operation = _start_operation(db, session_id, operation_id)
+        operation = find_operation(db, session_id, operation_id, "start")
         result = db.execute("SELECT result_json FROM operation_step WHERE operation_id=? AND step_key=?",
                             (operation_id, STEP)).fetchone()
         if result:
@@ -167,7 +153,7 @@ def read_state(path: Path, session_id: str) -> dict:
         session = find_session(db, session_id)
         operation = current = None
         if version >= 3:
-            operation = db.execute("""SELECT id AS operation_id,kind,status,error_code FROM operation
+            operation = db.execute("""SELECT id AS operation_id,kind,status,error_code,result_refs_json FROM operation
                          WHERE session_id=? AND owner_id=? AND kind IN ('start','answer')
                          ORDER BY expected_epoch DESC LIMIT 1""", (session_id, OWNER_ID)).fetchone()
             current = db.execute("""SELECT t.id AS turn_id,e.id AS exchange_id,e.round_no,t.state,e.question_text AS question,
@@ -179,8 +165,14 @@ def read_state(path: Path, session_id: str) -> dict:
         visible = dict(current) if current is not None else None
         if visible is not None and visible["answer"] is None:
             del visible["answer"], visible["answered_at"]
+        operation_view = dict(operation) if operation is not None else None
+        if operation_view is not None:
+            refs = json.loads(operation_view.pop("result_refs_json") or "{}")
+            if operation_view["kind"] == "answer" and "decision" in refs:
+                operation_view["decision"] = refs["decision"]
+                operation_view["decision_reason"] = refs["decision_reason"]
         return {
             "session_id": session_id, "phase": session["phase"], "revision": session["revision"],
             "plan_version": session["plan_version"] if version >= 2 else 0,
-            "current": visible, "operation": dict(operation) if operation else None,
+            "current": visible, "operation": operation_view,
         }

@@ -82,6 +82,24 @@ def find_replay(db: sqlite3.Connection, kind: str, key: str, request_hash: str) 
     return row
 
 
+def find_operation(db: sqlite3.Connection, session_id: str, operation_id: str, kind: str) -> sqlite3.Row:
+    operation = db.execute("SELECT * FROM operation WHERE id=? AND session_id=? AND owner_id=? AND kind=?",
+                           (operation_id, session_id, OWNER_ID, kind)).fetchone()
+    if operation is None:
+        raise SessionError("RESOURCE_NOT_FOUND", "找不到该会话的操作")
+    return operation
+
+
+def operation_epoch(path: Path, session_id: str, operation_id: str, kind: str) -> int:
+    with closing(connect(path, readonly=True)) as db, db:
+        db.execute("BEGIN")
+        version = check_business_schema(db)
+        find_session(db, session_id)
+        if version < 3:
+            raise SessionError("RESOURCE_NOT_FOUND", "找不到该会话的操作")
+        return find_operation(db, session_id, operation_id, kind)["expected_epoch"]
+
+
 def ensure_session_idle(db: sqlite3.Connection, session: sqlite3.Row) -> None:
     if db.execute("""SELECT 1 FROM operation WHERE session_id=?
                      AND status IN ('queued','running','recovery_required')""", (session["id"],)).fetchone():
