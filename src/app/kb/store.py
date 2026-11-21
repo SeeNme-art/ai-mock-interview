@@ -1,12 +1,12 @@
 """SQLite persistence and candidate filtering for the public question bank."""
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 import hashlib
 import json
 from pathlib import Path
 import sqlite3
-from typing import Sequence
+from typing import Iterator, Sequence
 
 from .seed import Difficulty, Dimension, Question, SeedBank, prompt_key
 
@@ -114,8 +114,17 @@ def import_seed(path: Path, bank: SeedBank) -> dict[str, int]:
     return counts
 
 
-def list_questions(path: Path, *, dimension: Dimension | None = None, difficulty: Difficulty | None = None,
-                   exclude_ids: Sequence[str] = (), verified_only: bool = True) -> list[dict]:
+@contextmanager
+def read_bank(path: Path) -> Iterator[sqlite3.Connection]:
+    with closing(connect(path, readonly=True)) as db, db:
+        db.execute("BEGIN")
+        check_schema(db, sha256(MIGRATION.read_text(encoding="utf-8")))
+        yield db
+
+
+def read_questions(db: sqlite3.Connection, *, dimension: Dimension | None = None,
+                   difficulty: Difficulty | None = None, exclude_ids: Sequence[str] = (),
+                   verified_only: bool = True) -> list[dict]:
     where = ["status='verified'"] if verified_only else []
     args = []
     if dimension is not None:
@@ -128,17 +137,21 @@ def list_questions(path: Path, *, dimension: Dimension | None = None, difficulty
         where.append("id NOT IN (" + ",".join("?" for _ in exclude_ids) + ")")
         args.extend(exclude_ids)
     filters = " WHERE " + " AND ".join(where) if where else ""
-    with closing(connect(path, readonly=True)) as db, db:
-        db.execute("BEGIN")
-        check_schema(db, sha256(MIGRATION.read_text(encoding="utf-8")))
-        questions = []
-        for row in db.execute("SELECT * FROM question" + filters + " ORDER BY stable_faiss_id", args):
-            result = dict(row)
-            result.pop("prompt_key")
-            for key in JSON_FIELDS:
-                result[key] = json.loads(result.pop(key + "_json"))
-            sources = db.execute("""SELECT s.* FROM question_source r JOIN knowledge_source s ON s.id=r.source_id
-                                  WHERE r.question_id=? ORDER BY r.position""", (result["id"],))
-            result["sources"] = [dict(source) for source in sources]
-            questions.append(result)
-        return questions
+    questions = []
+    for row in db.execute("SELECT * FROM question" + filters + " ORDER BY stable_faiss_id", args):
+        result = dict(row)
+        result.pop("prompt_key")
+        for key in JSON_FIELDS:
+            result[key] = json.loads(result.pop(key + "_json"))
+        sources = db.execute("""SELECT s.* FROM question_source r JOIN knowledge_source s ON s.id=r.source_id
+                              WHERE r.question_id=? ORDER BY r.position""", (result["id"],))
+        result["sources"] = [dict(source) for source in sources]
+        questions.append(result)
+    return questions
+
+
+def list_questions(path: Path, *, dimension: Dimension | None = None, difficulty: Difficulty | None = None,
+                   exclude_ids: Sequence[str] = (), verified_only: bool = True) -> list[dict]:
+    with read_bank(path) as db:
+        return read_questions(db, dimension=dimension, difficulty=difficulty, exclude_ids=exclude_ids,
+                              verified_only=verified_only)

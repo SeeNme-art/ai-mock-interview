@@ -18,15 +18,16 @@
 | M0 / X02 | LangGraph 暂停、跨进程恢复与业务写入去重 | [独立实验](docs/项目设计/记录/阶段审阅-LangGraph恢复实验.md)已完成并获审阅通过；版本记录见 Git 历史，未接入正式业务 |
 | M0 / X03–X04 试测 | DeepSeek Flash 合成样本、响应校验与预算账本 | [真实试测](docs/项目设计/记录/阶段审阅-模型试测.md)六项一次通过，已获用户审批 |
 | M1 第一批 | 10 道可溯源种子题、SQLite 导入和候选筛选 | [首批题库](docs/项目设计/记录/阶段审阅-M1题库基础.md)已获审批并启用 |
+| M1 第二批 | SQLite 筛选后用 FAISS 排序、索引版本校验 | [本地检索](docs/项目设计/记录/阶段审阅-M1向量检索.md)已完成命令行验证并通过审阅 |
 | v2.0 设计 | 五批决策、业务与接口规范、评测计划、记录体系 | 文档已整合；不是产品发布 |
 | M0–M5 | 现状核对 → 小型 CLI 闭环 → 本地 Web → 材料与题库 → 验收交付 | 待按新版计划实施 |
 
-阶段顺序和验收条件以[评测与交付计划](docs/项目设计/05-评测与交付计划.md)为准。当前完成的是 P0 现状核验与观测修正；LangGraph 和真实模型小实验仍待后续阶段。语音依赖属于后续方向。
+阶段顺序和验收条件见[评测与交付计划](docs/项目设计/05-评测与交付计划.md)。独立的 LangGraph、真实模型和题库检索验证已完成，正式面试流程将在后续批次接入。语音依赖属于后续方向。
 
 ## 环境
 
 - 本轮实际环境：Windows x64、Python **3.12.14**；虚拟环境目录 `.venv/`。
-- P0 版本快照：[requirements-p0.lock.txt](requirements-p0.lock.txt)，已核对现有环境；尚未在全新环境重装验证。
+- P0 版本快照：[requirements-p0.lock.txt](requirements-p0.lock.txt)。M1 第二批在全新环境中与检索依赖一起安装并通过回归。
 
 ```powershell
 # 新电脑：先安装 Python 3.12，在项目根目录创建环境。
@@ -40,8 +41,8 @@ py -3.12 -m venv .venv
 | 文件 | 用途 | 何时需要 |
 |---|---|---|
 | `requirements.txt` | fastapi / uvicorn / pydantic | P0 基础与 M0 复核 |
-| `requirements-llm.txt` | langchain / faiss | 模型与检索实验，先核对内容及版本 |
-| `requirements-embed.txt` | sentence-transformers | 启用本地 embedding 时 |
+| `requirements-llm.txt` | LangChain 等前期候选依赖 | 模型实验按对应阶段文档安装 |
+| `requirements-embed.txt` | FAISS / FastEmbed / ONNX Runtime | 运行本地题库检索，与 P0 依赖一同安装 |
 | `requirements-voice.txt` | edge-tts / faster-whisper | 后续语音方向，非首版必需 |
 
 ## 跑起来
@@ -64,6 +65,8 @@ $env:OBSERVE_STORE_IO = "false"
 ```
 
 回归检查：`.\.venv\Scripts\python.exe -m unittest discover -s tests -v`。使用临时数据库、合成内容和随机本机端口，不需要密钥；其中一次工具失败是演示脚本故意注入的案例。
+
+本地题库的模型下载、索引重建、查询和检索测试见[检索复现步骤](docs/项目设计/记录/阶段审阅-M1向量检索.md#怎样复现)。
 
 ## 目录
 

@@ -1,3 +1,7 @@
-# ---------- M1 检索实验候选依赖；本轮未安装验证 ----------
-# 启用本地 embedding 时安装；资源占用由代表样本实测。
-sentence-transformers>=3.0
+# M1 本地检索在 Windows x64 / CPython 3.12 上验证的版本。
+# 题库还需 P0 的 Pydantic，先安装 requirements-p0.lock.txt。
+faiss-cpu==1.16.0
+fastembed==0.9.1
+numpy==2.5.5
+onnxruntime==1.32.0
+tokenizers==0.23.3

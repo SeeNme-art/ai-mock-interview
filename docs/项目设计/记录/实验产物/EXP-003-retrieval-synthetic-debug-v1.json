@@ -1,0 +1,250 @@
+{
+  "experiment": "EXP-003",
+  "date": "2026-11-21",
+  "code_base": "9ae5b03",
+  "dataset": "synthetic-debug-v1",
+  "query_version": "objective-jd-skills-v1",
+  "index_version": "df5b7e9ea7db4aad8d3c1ab8bab9fd80",
+  "index_sha256": "0e82f8857b225b6428772f93d48decf7e6e84cba47412aa99f65660ac77bb99c",
+  "embedding_model": "BAAI/bge-small-zh-v1.5@46fbe35fd4374a00fee7de77dfddaeb6dd6a2c59/fastembed-0.9.1/onnxruntime-1.32.0/tokenizers-0.23.3",
+  "embedding_dimension": 512,
+  "question_versions": [
+    {
+      "content_hash": "d6fc73a62e6f8c11d9b5fa4d0b3bce83baee07cb489e55b9d3069b0f90a0a4b0",
+      "embedding_input_hash": "4ec9aa1a559c78ccedde67c055084217b55a5a2e4678e0a1eb93d7da9df9812e",
+      "faiss_id": 101,
+      "id": "agent-workflow-boundary",
+      "revision": 2
+    },
+    {
+      "content_hash": "63b7cd7ffdb55b8e3066ce13947b7b2adcf82e5122704029e8dab989d17d453d",
+      "embedding_input_hash": "83aa2dd4ede9f53a873cac5c32dca868d8abbb2b98d5dc38bd8a1613b94d1d77",
+      "faiss_id": 102,
+      "id": "agent-interrupt-replay",
+      "revision": 2
+    },
+    {
+      "content_hash": "d9ab7d67843c10a1f4779c531766bc17a1f38837e20a498d6008c839631640f7",
+      "embedding_input_hash": "272e866c99da7d3adf411d8f08e13200f94ba334513357ab6840a6a7d6f7319a",
+      "faiss_id": 103,
+      "id": "agent-json-schema",
+      "revision": 2
+    },
+    {
+      "content_hash": "01f57963e24d53b39636936987b2d46c3b12cefb16480f0975c666511c9a5f1a",
+      "embedding_input_hash": "55e5b17d08e3c4474f0ba6d6b9e0d258b8fcb11c45b4c19c638d32421730799c",
+      "faiss_id": 104,
+      "id": "agent-tool-executor",
+      "revision": 2
+    },
+    {
+      "content_hash": "acc1ed67327da6741c8b2942efa362d7137b9a62f2c58379b3531564dd22dc53",
+      "embedding_input_hash": "2fdf4de9f341e7abe26e70dae897739d9351d45b10f267d262d678fcd751afff",
+      "faiss_id": 201,
+      "id": "rag-chunk-boundary",
+      "revision": 2
+    },
+    {
+      "content_hash": "0de4f4c0607b5e15870212f5d99831debecf2ad8f28a44e793e235be3f0aba0a",
+      "embedding_input_hash": "e56c587d55a6c4fd0b217180837ca5127069c64cee8b1361dc5b346b929ccd7f",
+      "faiss_id": 202,
+      "id": "rag-cosine-faiss",
+      "revision": 2
+    },
+    {
+      "content_hash": "29573344a650caa671239feadfe8949f3063b9643499ac1103f90ab64259c363",
+      "embedding_input_hash": "bfe04010c13c3c83cec96875b9973893341bd03c5fe65a71defe9f86e82314cb",
+      "faiss_id": 203,
+      "id": "rag-failure-attribution",
+      "revision": 2
+    },
+    {
+      "content_hash": "5ad4a4c8123316898fc62b5fd823a195cfbe6297ed508f63a059ed5dd888bb67",
+      "embedding_input_hash": "6ded8b66eb37c0b01d2233a11cd5ca7645bcbc2391667369c485b50f9159f08f",
+      "faiss_id": 301,
+      "id": "backend-sqlite-context",
+      "revision": 2
+    },
+    {
+      "content_hash": "e2f05d9e4388db9c6b83b673cded9def1de2cdde35e45c28d62f13591f99ddaf",
+      "embedding_input_hash": "4ddd248bbce95f38a4bd54847fe942f73a86707be51df4698ea57ef36f5960f3",
+      "faiss_id": 302,
+      "id": "backend-fastapi-blocking-io",
+      "revision": 2
+    },
+    {
+      "content_hash": "7517bd957ce66b81610af340ab345d0d9a0af994b334690b1d497ba932f8d197",
+      "embedding_input_hash": "5c8e8ca55697b2a6175cfd45aecdc7784f29a34d90ba086daa30122146d95360",
+      "faiss_id": 303,
+      "id": "backend-pydantic-strict",
+      "revision": 2
+    }
+  ],
+  "paid_requests": 0,
+  "count": 6,
+  "sqlite_top_1": 2,
+  "faiss_top_1": 6,
+  "faiss_top_3": 6,
+  "queries": [
+    {
+      "dimension": "agent",
+      "difficulty": "basic",
+      "objective": "控制模型能调用哪些外部操作",
+      "jd": "开发有权限检查的 Agent 服务",
+      "skills": [
+        "工具调用",
+        "参数校验"
+      ],
+      "expected": "agent-tool-executor",
+      "sqlite_id_order": [
+        "agent-workflow-boundary",
+        "agent-json-schema",
+        "agent-tool-executor"
+      ],
+      "faiss_order": [
+        {
+          "id": "agent-tool-executor",
+          "cosine": 0.656325
+        },
+        {
+          "id": "agent-json-schema",
+          "cosine": 0.618005
+        },
+        {
+          "id": "agent-workflow-boundary",
+          "cosine": 0.611799
+        }
+      ]
+    },
+    {
+      "dimension": "agent",
+      "difficulty": "basic",
+      "objective": "约束模型输出，使它可以被程序直接解析和校验",
+      "jd": "将模型响应转成稳定可读的业务字段",
+      "skills": [
+        "JSON Schema",
+        "结构化输出"
+      ],
+      "expected": "agent-json-schema",
+      "sqlite_id_order": [
+        "agent-workflow-boundary",
+        "agent-json-schema",
+        "agent-tool-executor"
+      ],
+      "faiss_order": [
+        {
+          "id": "agent-json-schema",
+          "cosine": 0.742143
+        },
+        {
+          "id": "agent-tool-executor",
+          "cosine": 0.648328
+        },
+        {
+          "id": "agent-workflow-boundary",
+          "cosine": 0.591531
+        }
+      ]
+    },
+    {
+      "dimension": "rag",
+      "difficulty": "applied",
+      "objective": "一段完整的说明被切到相邻两块后如何保留上下文",
+      "jd": "建设技术文档知识库",
+      "skills": [
+        "文档切分",
+        "chunk overlap"
+      ],
+      "expected": "rag-chunk-boundary",
+      "sqlite_id_order": [
+        "rag-chunk-boundary",
+        "rag-failure-attribution"
+      ],
+      "faiss_order": [
+        {
+          "id": "rag-chunk-boundary",
+          "cosine": 0.69364
+        },
+        {
+          "id": "rag-failure-attribution",
+          "cosine": 0.552768
+        }
+      ]
+    },
+    {
+      "dimension": "rag",
+      "difficulty": "applied",
+      "objective": "答错时区分系统没找到依据和模型没有使用依据",
+      "jd": "定位问答链路质量问题",
+      "skills": [
+        "召回",
+        "证据"
+      ],
+      "expected": "rag-failure-attribution",
+      "sqlite_id_order": [
+        "rag-chunk-boundary",
+        "rag-failure-attribution"
+      ],
+      "faiss_order": [
+        {
+          "id": "rag-failure-attribution",
+          "cosine": 0.699145
+        },
+        {
+          "id": "rag-chunk-boundary",
+          "cosine": 0.611259
+        }
+      ]
+    },
+    {
+      "dimension": "backend",
+      "difficulty": "basic",
+      "objective": "校验接口收到的数字字符串，避免静默类型转换",
+      "jd": "定义可预期的 API 入参校验",
+      "skills": [
+        "Pydantic",
+        "strict"
+      ],
+      "expected": "backend-pydantic-strict",
+      "sqlite_id_order": [
+        "backend-sqlite-context",
+        "backend-pydantic-strict"
+      ],
+      "faiss_order": [
+        {
+          "id": "backend-pydantic-strict",
+          "cosine": 0.66848
+        },
+        {
+          "id": "backend-sqlite-context",
+          "cosine": 0.517836
+        }
+      ]
+    },
+    {
+      "dimension": "backend",
+      "difficulty": "basic",
+      "objective": "用 with 管理数据库事务时连接是否也会释放",
+      "jd": "维护本地持久化服务和事务边界",
+      "skills": [
+        "SQLite",
+        "context manager"
+      ],
+      "expected": "backend-sqlite-context",
+      "sqlite_id_order": [
+        "backend-sqlite-context",
+        "backend-pydantic-strict"
+      ],
+      "faiss_order": [
+        {
+          "id": "backend-sqlite-context",
+          "cosine": 0.712785
+        },
+        {
+          "id": "backend-pydantic-strict",
+          "cosine": 0.463379
+        }
+      ]
+    }
+  ]
+}
