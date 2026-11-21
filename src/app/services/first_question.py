@@ -167,15 +167,20 @@ def read_state(path: Path, session_id: str) -> dict:
         session = find_session(db, session_id)
         operation = current = None
         if version >= 3:
-            operation = db.execute("""SELECT id AS operation_id,status,error_code FROM operation
-                                      WHERE session_id=? AND owner_id=? AND kind='start'""", (session_id, OWNER_ID)).fetchone()
+            operation = db.execute("""SELECT id AS operation_id,kind,status,error_code FROM operation
+                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer')
+                         ORDER BY expected_epoch DESC LIMIT 1""", (session_id, OWNER_ID)).fetchone()
             current = db.execute("""SELECT t.id AS turn_id,e.id AS exchange_id,e.round_no,t.state,e.question_text AS question,
-                                           t.task_type,t.dimension,t.difficulty,t.fallback_reason
-                                    FROM turn t JOIN exchange e ON e.turn_id=t.id AND e.round_no=0
-                                    WHERE t.session_id=? AND t.state='awaiting_answer' AND ?='ACTIVE'""",
+                                  t.task_type,t.dimension,t.difficulty,t.fallback_reason,e.answer_text AS answer,e.answered_at
+                                  FROM turn t JOIN exchange e ON e.turn_id=t.id AND e.round_no=(
+                                      SELECT max(round_no) FROM exchange WHERE turn_id=t.id
+                                  ) WHERE t.session_id=? AND t.state IN ('awaiting_answer','processing') AND ?='ACTIVE'""",
                                  (session_id, session["phase"])).fetchone()
+        visible = dict(current) if current is not None else None
+        if visible is not None and visible["answer"] is None:
+            del visible["answer"], visible["answered_at"]
         return {
             "session_id": session_id, "phase": session["phase"], "revision": session["revision"],
             "plan_version": session["plan_version"] if version >= 2 else 0,
-            "current": dict(current) if current else None, "operation": dict(operation) if operation else None,
+            "current": visible, "operation": dict(operation) if operation else None,
         }

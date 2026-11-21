@@ -1,4 +1,4 @@
-"""Start a planned local interview or read its saved first question."""
+"""Start a planned local interview, submit a text answer, or read saved progress."""
 from __future__ import annotations
 
 import argparse
@@ -10,7 +10,23 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from app.db.business import SessionError
+from app.services.answers import MAX_ANSWER_CHARS, accept_answer
 from app.services.first_question import accept_start, read_state
+
+
+def read_answer(path: Path | None) -> str:
+    limit = MAX_ANSWER_CHARS * 4 + 3
+    if path is None:
+        raw = sys.stdin.buffer.read(limit + 1)
+    else:
+        with path.open("rb") as stream:
+            raw = stream.read(limit + 1)
+    if len(raw) > limit:
+        raise SessionError("INVALID_INPUT", f"回答最多 {MAX_ANSWER_CHARS} 个字符")
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeError as exc:
+        raise SessionError("INVALID_INPUT", "请用 UTF-8 文本提交回答") from exc
 
 
 def main() -> int:
@@ -26,9 +42,21 @@ def main() -> int:
     resume = actions.add_parser("resume-start", help="explicitly continue a saved start command")
     resume.add_argument("session_id")
     resume.add_argument("operation_id")
+    answer = actions.add_parser("answer", help="read UTF-8 text from stdin or --answer-file and save it")
+    answer.add_argument("session_id")
+    answer.add_argument("turn_id")
+    answer.add_argument("exchange_id")
+    answer.add_argument("--expected-revision", required=True, type=int)
+    answer.add_argument("--key", required=True)
+    answer.add_argument("--answer-file", type=Path)
     args = parser.parse_args()
     try:
-        if args.action != "state":
+        if args.action == "answer":
+            result = accept_answer(args.db, args.session_id, args.turn_id, args.exchange_id,
+                                   args.expected_revision, args.key, read_answer(args.answer_file))
+        elif args.action == "state":
+            result = read_state(args.db, args.session_id)
+        else:
             from app.workflow.interview import run_first_question
 
             if args.action == "start":
@@ -37,7 +65,7 @@ def main() -> int:
                     run_first_question(args.db, args.bank, args.session_id, operation_id)
             else:
                 run_first_question(args.db, args.bank, args.session_id, args.operation_id)
-        result = read_state(args.db, args.session_id)
+            result = read_state(args.db, args.session_id)
     except ModuleNotFoundError as exc:
         if exc.name not in {"langgraph", "langsmith"}:
             raise
@@ -48,7 +76,7 @@ def main() -> int:
                          ensure_ascii=False), file=sys.stderr)
         return 1
     except (OSError, sqlite3.Error):
-        print("暂时无法读写业务库或题库。可用 state 检查已保存进度，再继续已登记的开始操作。", file=sys.stderr)
+        print("暂时无法读取输入或访问数据库。请用 state 核对已保存进度后再重试。", file=sys.stderr)
         return 1
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
