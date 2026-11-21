@@ -21,6 +21,7 @@ data/experiments/
 *.db
 *.db-wal
 *.db-shm
+*.db-journal
 
 # ---------- 课程资料 ----------
 # 含明文 API Key，且与代码无关，不入库

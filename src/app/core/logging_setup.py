@@ -8,8 +8,8 @@
 - metadata 字段与事件名由代码定义，调用方不得填入用户文本
 
 为什么自己写 formatter 而不用 structlog：
-P0 使用标准库实现结构化输出与轮转，减少依赖；mask 仅是遗留工具，
-不能据此承诺已清除自由文本中的个人信息。
+P0 使用标准库实现结构化输出与轮转。mask 供本地材料预览遮盖常见联系方式，
+正文不进入日志格式化流程。
 """
 
 from __future__ import annotations
@@ -27,11 +27,10 @@ from app.core.context import current_session_id, current_span_id, current_trace_
 from app.core.telemetry import error_code, safe_event, safe_fields
 
 # ---------- 脱敏 ----------
-# 顺序有讲究：先手机号再身份证，避免长数字被短规则先截断
 _PII_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"1[3-9]\d{9}"), "1**********"),
     (re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+"), "***@***"),
-    (re.compile(r"\b\d{17}[\dXx]\b"), "******************"),
+    (re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)"), "******************"),
+    (re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)"), "1**********"),
 )
 
 

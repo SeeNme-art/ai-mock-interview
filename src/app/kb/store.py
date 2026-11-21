@@ -2,66 +2,18 @@
 from __future__ import annotations
 
 from contextlib import closing, contextmanager
-import hashlib
 import json
 from pathlib import Path
 import sqlite3
 from typing import Iterator, Sequence
+
+from app.db.sqlite import canonical_json, check_schema, connect, initialize_or_check, sha256
 
 from .seed import Difficulty, Dimension, Question, SeedBank, prompt_key
 
 SCHEMA_VERSION = 1
 MIGRATION = Path(__file__).with_name("migrations") / "001_question_bank.sql"
 JSON_FIELDS = ("answer_points", "acceptable_alternatives", "common_errors", "applicable_dimensions", "tags")
-
-
-def canonical_json(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
-def sha256(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def connect(path: Path, *, readonly: bool = False) -> sqlite3.Connection:
-    if readonly:
-        db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
-    else:
-        db = sqlite3.connect(path)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys=ON")
-    return db
-
-
-def check_schema(db: sqlite3.Connection, checksum: str) -> None:
-    if db.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
-        raise ValueError("题库结构版本不受支持")
-    applied = db.execute("SELECT checksum FROM schema_migration WHERE version=?", (SCHEMA_VERSION,)).fetchone()
-    if not applied or applied["checksum"] != checksum:
-        raise ValueError("题库迁移校验值不匹配")
-
-
-def initialize_or_check(db: sqlite3.Connection) -> None:
-    sql = MIGRATION.read_text(encoding="utf-8")
-    checksum = sha256(sql)
-    if db.execute("PRAGMA user_version").fetchone()[0] != 0:
-        check_schema(db, checksum)
-        return
-    existing = db.execute("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' LIMIT 1").fetchone()
-    if existing:
-        raise ValueError("拒绝用题库迁移初始化已有数据的未登记数据库")
-    # executescript would commit the open transaction. Execute numbered SQL
-    # statements individually so schema and seed writes roll back together.
-    statement = ""
-    for line in sql.splitlines(keepends=True):
-        statement += line
-        if sqlite3.complete_statement(statement):
-            db.execute(statement)
-            statement = ""
-    if statement.strip():
-        raise ValueError("迁移 SQL 存在不完整语句")
-    db.execute("INSERT INTO schema_migration(version, checksum) VALUES (?,?)", (SCHEMA_VERSION, checksum))
-    db.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
 
 
 def save_question(db: sqlite3.Connection, question: Question) -> str:
@@ -99,7 +51,7 @@ def import_seed(path: Path, bank: SeedBank) -> dict[str, int]:
     counts = {"inserted": 0, "updated": 0, "unchanged": 0}
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        initialize_or_check(db)
+        initialize_or_check(db, MIGRATION, SCHEMA_VERSION, "题库")
         for source in bank.sources:
             data = source.model_dump(mode="json")
             old = db.execute("SELECT * FROM knowledge_source WHERE id=?", (source.id,)).fetchone()
@@ -118,7 +70,7 @@ def import_seed(path: Path, bank: SeedBank) -> dict[str, int]:
 def read_bank(path: Path) -> Iterator[sqlite3.Connection]:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
-        check_schema(db, sha256(MIGRATION.read_text(encoding="utf-8")))
+        check_schema(db, SCHEMA_VERSION, sha256(MIGRATION.read_text(encoding="utf-8")), "题库")
         yield db
 
 
