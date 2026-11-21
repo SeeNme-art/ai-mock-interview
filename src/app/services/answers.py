@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from contextlib import closing
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+import sqlite3
 from uuid import uuid4
 
 from app.db.business import (
@@ -13,6 +15,20 @@ from app.db.business import (
 from app.db.sqlite import canonical_json, connect, sha256
 
 MAX_ANSWER_CHARS = 8000
+
+
+@dataclass(frozen=True)
+class ExchangeRecord:
+    id: str
+    round_no: int
+    question: str = field(repr=False)
+    answer: str | None = field(repr=False)
+
+
+def read_exchanges(db: sqlite3.Connection, turn_id: str) -> tuple[ExchangeRecord, ...]:
+    return tuple(ExchangeRecord(*row) for row in db.execute(
+        "SELECT id,round_no,question_text,answer_text FROM exchange WHERE turn_id=? ORDER BY round_no", (turn_id,),
+    ))
 
 
 def _normalize_answer(answer: str) -> str:

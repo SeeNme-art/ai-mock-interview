@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from app.db.business import SessionError
 from app.services.answers import MAX_ANSWER_CHARS, accept_answer
+from app.services.evaluation import accept_evaluation
 from app.services.first_question import accept_start, read_state
 
 
@@ -29,14 +30,14 @@ def read_answer(path: Path | None) -> str:
         raise SessionError("INVALID_INPUT", "请用 UTF-8 文本提交回答") from exc
 
 
-def read_demo_proposal(path: Path) -> object:
+def read_demo_json(path: Path) -> object:
     try:
         with path.open("rb") as stream:
             raw = stream.read(32769)
     except OSError as exc:
-        raise SessionError("CONFIGURATION_ERROR", "无法读取本地追问样例") from exc
+        raise SessionError("CONFIGURATION_ERROR", "无法读取本地样例文件") from exc
     if len(raw) > 32768:
-        raise ValueError("本地追问样例超过长度限制")
+        raise ValueError("本地样例超过长度限制")
     return json.loads(raw.decode("utf-8-sig"))
 
 
@@ -64,6 +65,16 @@ def main() -> int:
     process.add_argument("session_id")
     process.add_argument("operation_id")
     process.add_argument("--demo-proposal-file", type=Path)
+    score = actions.add_parser("score-answer", help="evaluate a score-pending answer using a local demo assessment")
+    score.add_argument("session_id")
+    score.add_argument("answer_operation_id")
+    score.add_argument("--expected-revision", required=True, type=int)
+    score.add_argument("--key", required=True)
+    score.add_argument("--demo-assessment-file", required=True, type=Path)
+    resume_score = actions.add_parser("resume-score", help="explicitly continue a saved evaluation operation")
+    resume_score.add_argument("session_id")
+    resume_score.add_argument("operation_id")
+    resume_score.add_argument("--demo-assessment-file", type=Path)
     args = parser.parse_args()
     try:
         if args.action == "answer":
@@ -72,7 +83,7 @@ def main() -> int:
         elif args.action == "state":
             result = read_state(args.db, args.session_id)
         else:
-            from app.workflow.interview import run_answer, run_first_question
+            from app.workflow.interview import run_answer, run_evaluation, run_first_question
 
             if args.action == "start":
                 operation_id, accepted = accept_start(args.db, args.session_id, args.expected_revision, args.key)
@@ -80,9 +91,17 @@ def main() -> int:
                     run_first_question(args.db, args.bank, args.session_id, operation_id)
             elif args.action == "resume-start":
                 run_first_question(args.db, args.bank, args.session_id, args.operation_id)
-            else:
-                proposer = (lambda _: read_demo_proposal(args.demo_proposal_file)) if args.demo_proposal_file is not None else None
+            elif args.action == "process-answer":
+                proposer = (lambda _: read_demo_json(args.demo_proposal_file)) if args.demo_proposal_file is not None else None
                 run_answer(args.db, args.session_id, args.operation_id, proposer)
+            elif args.action == "score-answer":
+                operation_id, accepted = accept_evaluation(args.db, args.session_id, args.answer_operation_id,
+                                                           args.expected_revision, args.key)
+                if accepted:
+                    run_evaluation(args.db, args.session_id, operation_id, lambda _: read_demo_json(args.demo_assessment_file))
+            else:
+                evaluator = (lambda _: read_demo_json(args.demo_assessment_file)) if args.demo_assessment_file is not None else None
+                run_evaluation(args.db, args.session_id, args.operation_id, evaluator)
             result = read_state(args.db, args.session_id)
     except ModuleNotFoundError as exc:
         if exc.name not in {"langgraph", "langsmith"}:

@@ -14,6 +14,7 @@ from uuid import uuid4
 from app.db.business import SessionError, check_business_schema, find_operation, find_session
 from app.db.sqlite import canonical_json, connect
 from app.schemas.probing import ProbeProposal
+from app.services.answers import ExchangeRecord, read_exchanges
 from app.services.scoring import locate_evidence
 
 STEP = "decide_follow_up"
@@ -21,18 +22,10 @@ MAX_PROBES = 2
 
 
 @dataclass(frozen=True)
-class SubmittedExchange:
-    id: str
-    round_no: int
-    question: str = field(repr=False)
-    answer: str = field(repr=False)
-
-
-@dataclass(frozen=True)
 class ProbeContext:
     turn_id: str
     objective: str = field(repr=False)
-    exchanges: tuple[SubmittedExchange, ...]
+    exchanges: tuple[ExchangeRecord, ...]
     asked_questions: tuple[str, ...] = field(repr=False)
     reference_points: tuple[str, ...] = field(repr=False)
 
@@ -46,7 +39,7 @@ def _compare_text(value: str) -> str:
 
 def _validate_proposal(value: object, context: ProbeContext) -> ProbeProposal:
     proposal = ProbeProposal.model_validate(value)
-    answers = {exchange.id: exchange.answer for exchange in context.exchanges}
+    answers = {exchange.id: exchange.answer for exchange in context.exchanges if exchange.answer is not None}
     evidence = [locate_evidence(ref, answers) for ref in proposal.evidence_refs]
     if proposal.should_probe:
         if not any(ref.exchange_id == context.exchanges[-1].id for ref in evidence):
@@ -76,9 +69,7 @@ def _load_work(db: sqlite3.Connection, session_id: str, operation_id: str, epoch
                       (request["turn_id"], session_id)).fetchone()
     if turn is None:
         raise SessionError("ILLEGAL_ACTION", "没有与该操作匹配的待处理题目")
-    exchanges = tuple(SubmittedExchange(*row) for row in db.execute(
-        "SELECT id,round_no,question_text,answer_text FROM exchange WHERE turn_id=? ORDER BY round_no", (turn["id"],),
-    ))
+    exchanges = read_exchanges(db, turn["id"])
     if (not exchanges or exchanges[-1].id != request["exchange_id"] or any(item.answer is None for item in exchanges)
             or [item.round_no for item in exchanges] != list(range(turn["probe_count"] + 1))):
         raise SessionError("ILLEGAL_ACTION", "问答轮次与已保存操作不一致")

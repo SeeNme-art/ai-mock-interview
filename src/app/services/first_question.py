@@ -154,7 +154,7 @@ def read_state(path: Path, session_id: str) -> dict:
         operation = current = None
         if version >= 3:
             operation = db.execute("""SELECT id AS operation_id,kind,status,error_code,result_refs_json FROM operation
-                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer')
+                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer','evaluate_answer')
                          ORDER BY expected_epoch DESC LIMIT 1""", (session_id, OWNER_ID)).fetchone()
             current = db.execute("""SELECT t.id AS turn_id,e.id AS exchange_id,e.round_no,t.state,e.question_text AS question,
                                   t.task_type,t.dimension,t.difficulty,t.fallback_reason,e.answer_text AS answer,e.answered_at
@@ -171,6 +171,8 @@ def read_state(path: Path, session_id: str) -> dict:
             if operation_view["kind"] == "answer" and "decision" in refs:
                 operation_view["decision"] = refs["decision"]
                 operation_view["decision_reason"] = refs["decision_reason"]
+            if operation_view["kind"] == "evaluate_answer":
+                operation_view["evaluation_status"] = refs.get("evaluation_status", "pending")
         return {
             "session_id": session_id, "phase": session["phase"], "revision": session["revision"],
             "plan_version": session["plan_version"] if version >= 2 else 0,
