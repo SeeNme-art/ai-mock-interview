@@ -12,7 +12,10 @@ import re
 import sqlite3
 from uuid import uuid4
 
-from app.db.business import OWNER_ID, check_business_schema, upgrade_business_v1, validate_request_key
+from app.db.business import (
+    OWNER_ID, SessionError, check_business_schema, ensure_session_idle, find_replay, find_session,
+    upgrade_business, validate_request_key,
+)
 from app.db.sqlite import canonical_json, connect, sha256
 from app.kb.seed import prompt_key
 from app.kb.store import list_questions
@@ -29,11 +32,7 @@ _PROJECT_TARGETS = {
 }
 
 
-class PlanningError(ValueError):
-    def __init__(self, code: str, message: str, *, current_revision: int | None = None):
-        super().__init__(message)
-        self.code = code
-        self.current_revision = current_revision
+PlanningError = SessionError
 
 
 @dataclass(frozen=True)
@@ -110,14 +109,6 @@ def _build_slots(questions: list[dict], projects: list[dict], directions: list[s
     return [slot for pair in zip_longest(knowledge, project) for slot in pair if slot is not None]
 
 
-def _find_session(db: sqlite3.Connection, session_id: str) -> sqlite3.Row:
-    row = db.execute("SELECT * FROM interview_session WHERE id=? AND owner_id=? AND delete_state='none'",
-                     (session_id, OWNER_ID)).fetchone()
-    if row is None:
-        raise PlanningError("RESOURCE_NOT_FOUND", "找不到可访问的会话")
-    return row
-
-
 def _summary(db: sqlite3.Connection, session: sqlite3.Row) -> dict:
     directions = json.loads(session["selected_dimensions_json"])
     coverage = {key: {"knowledge": 0, "project": 0} for key in directions}
@@ -147,7 +138,7 @@ def show_plan(path: Path, session_id: str) -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
         version = check_business_schema(db)
-        session = _find_session(db, session_id)
+        session = find_session(db, session_id)
         if version < 2 or not session["plan_version"]:
             raise PlanningError("ILLEGAL_ACTION", "会话还没有计划，请先生成计划", current_revision=session["revision"])
         return _summary(db, session)
@@ -166,22 +157,17 @@ def rebuild_plan(path: Path, bank: Path, session_id: str, expected_revision: int
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
         version = check_business_schema(db)
-        session = _find_session(db, session_id)
+        session = find_session(db, session_id)
         if version >= 2:
-            operation = db.execute("""SELECT request_hash, result_refs_json FROM operation
-                                      WHERE owner_id=? AND kind='rebuild_plan' AND idempotency_key=?""",
-                                   (OWNER_ID, key)).fetchone()
+            operation = find_replay(db, "rebuild_plan", key, digest)
             if operation:
-                if operation["request_hash"] != digest:
-                    raise PlanningError("IDEMPOTENCY_CONFLICT", "该请求标识已经用于其他规划内容")
                 return json.loads(operation["result_refs_json"])
         if session["phase"] != "PLANNING":
             raise PlanningError("ILLEGAL_ACTION", "面试开始后计划已冻结", current_revision=session["revision"])
         if session["revision"] != expected_revision:
             raise PlanningError("STALE_REVISION", "会话进度已更新，请刷新后再生成计划", current_revision=session["revision"])
-        if version >= 2 and db.execute("""SELECT 1 FROM operation WHERE session_id=?
-                                         AND status IN ('queued','running','recovery_required')""", (session_id,)).fetchone():
-            raise PlanningError("OPERATION_IN_PROGRESS", "该会话已有待处理操作", current_revision=session["revision"])
+        if version >= 2:
+            ensure_session_idle(db, session)
 
         directions = changes.directions or json.loads(session["selected_dimensions_json"])
         difficulty = changes.difficulty or (session["difficulty"] if version >= 2 else "basic")
@@ -191,7 +177,7 @@ def rebuild_plan(path: Path, bank: Path, session_id: str, expected_revision: int
             raise PlanningError("QUESTION_UNAVAILABLE", "审核题库尚未导入，请先初始化题库")
         slots = _build_slots(list_questions(bank, difficulty=difficulty), projects, directions, count, session["mode"])
         if version == 1:
-            upgrade_business_v1(db, path)
+            upgrade_business(db, path, 2)
 
         plan_version = (session["plan_version"] if version >= 2 else 0) + 1
         db.execute("DELETE FROM plan_item WHERE session_id=?", (session_id,))
@@ -206,7 +192,7 @@ def rebuild_plan(path: Path, bank: Path, session_id: str, expected_revision: int
         db.execute("""UPDATE interview_session SET revision=revision+1, plan_version=?, difficulty=?,
                       question_count=?, selected_dimensions_json=? WHERE id=? AND owner_id=?""",
                    (plan_version, difficulty, count, canonical_json(directions), session_id, OWNER_ID))
-        result = _summary(db, _find_session(db, session_id))
+        result = _summary(db, find_session(db, session_id))
         now = datetime.now(UTC).isoformat()
         db.execute("""INSERT INTO operation (id, session_id, owner_id, kind, idempotency_key, request_hash,
                       expected_epoch, status, safe_request_json, result_refs_json, created_at, updated_at)

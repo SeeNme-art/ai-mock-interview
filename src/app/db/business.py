@@ -1,4 +1,4 @@
-"""The business database schema and the first upgrade of persisted sessions."""
+"""The business schema, migrations, and local session lookups."""
 from __future__ import annotations
 
 from contextlib import closing
@@ -11,8 +11,16 @@ from uuid import uuid4
 from .sqlite import apply_migration, check_migration, connect, initialize_or_check, sha256
 
 OWNER_ID = "local"
-MIGRATIONS = tuple(Path(__file__).with_name("migrations") / name
-                   for name in ("001_init.sql", "002_interview_plan.sql"))
+MIGRATIONS = tuple(Path(__file__).with_name("migrations") / name for name in (
+    "001_init.sql", "002_interview_plan.sql", "003_first_question.sql",
+))
+
+
+class SessionError(ValueError):
+    def __init__(self, code: str, message: str, *, current_revision: int | None = None):
+        super().__init__(message)
+        self.code = code
+        self.current_revision = current_revision
 
 
 def validate_request_key(key: str) -> None:
@@ -32,14 +40,18 @@ def check_business_schema(db: sqlite3.Connection) -> int:
 def initialize_business(db: sqlite3.Connection) -> None:
     if db.execute("PRAGMA user_version").fetchone()[0] == 0:
         initialize_or_check(db, MIGRATIONS[0], 1, "业务库")
-        apply_migration(db, MIGRATIONS[1].read_text(encoding="utf-8"), 2)
+        for number, migration in enumerate(MIGRATIONS[1:], start=2):
+            apply_migration(db, migration.read_text(encoding="utf-8"), number)
     else:
         check_business_schema(db)
 
 
-def upgrade_business_v1(db: sqlite3.Connection, path: Path) -> None:
-    """Back up the committed v1 database while its writer lock is held."""
-    backup = path.with_name(f"{path.stem}.before-002-{uuid4().hex}.db")
+def upgrade_business(db: sqlite3.Connection, path: Path, version: int) -> None:
+    """Back up the last committed version and apply the next migration."""
+    previous = check_business_schema(db)
+    if version != previous + 1 or version > len(MIGRATIONS):
+        raise ValueError("业务库迁移须按版本顺序执行")
+    backup = path.with_name(f"{path.stem}.before-{version:03d}-{uuid4().hex}.db")
     with backup.open("xb"):
         pass
     try:
@@ -50,5 +62,27 @@ def upgrade_business_v1(db: sqlite3.Connection, path: Path) -> None:
     except (OSError, sqlite3.Error, ValueError):
         backup.unlink(missing_ok=True)
         raise
-    apply_migration(db, MIGRATIONS[1].read_text(encoding="utf-8"), 2)
-    db.execute("INSERT INTO migration_backup VALUES (?,?,?)", (backup.name, 1, datetime.now(UTC).isoformat()))
+    apply_migration(db, MIGRATIONS[version - 1].read_text(encoding="utf-8"), version)
+    db.execute("INSERT INTO migration_backup VALUES (?,?,?)", (backup.name, previous, datetime.now(UTC).isoformat()))
+
+
+def find_session(db: sqlite3.Connection, session_id: str) -> sqlite3.Row:
+    row = db.execute("SELECT * FROM interview_session WHERE id=? AND owner_id=? AND delete_state='none'",
+                     (session_id, OWNER_ID)).fetchone()
+    if row is None:
+        raise SessionError("RESOURCE_NOT_FOUND", "找不到可访问的会话")
+    return row
+
+
+def find_replay(db: sqlite3.Connection, kind: str, key: str, request_hash: str) -> sqlite3.Row | None:
+    row = db.execute("""SELECT id, request_hash, result_refs_json FROM operation
+                        WHERE owner_id=? AND kind=? AND idempotency_key=?""", (OWNER_ID, kind, key)).fetchone()
+    if row is not None and row["request_hash"] != request_hash:
+        raise SessionError("IDEMPOTENCY_CONFLICT", "该请求标识已用于另一请求")
+    return row
+
+
+def ensure_session_idle(db: sqlite3.Connection, session: sqlite3.Row) -> None:
+    if db.execute("""SELECT 1 FROM operation WHERE session_id=?
+                     AND status IN ('queued','running','recovery_required')""", (session["id"],)).fetchone():
+        raise SessionError("OPERATION_IN_PROGRESS", "该会话已有待处理操作", current_revision=session["revision"])
