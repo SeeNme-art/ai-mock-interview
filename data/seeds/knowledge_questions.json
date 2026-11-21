@@ -1,0 +1,117 @@
+{
+  "sources": [
+    {"id":"lc-workflow", "title":"LangGraph: Workflows and agents", "locator":"https://docs.langchain.com/oss/python/langgraph/workflows-agents", "section":"Workflows and agents", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"lc-interrupt", "title":"LangGraph: Interrupts", "locator":"https://docs.langchain.com/oss/python/langgraph/interrupts", "section":"Side effects called before interrupt must be idempotent", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"lc-structured", "title":"LangChain: Structured output", "locator":"https://docs.langchain.com/oss/python/langchain/structured-output", "section":"Schema validation error", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"deepseek-json", "title":"DeepSeek: Chat Completions API", "locator":"https://api-docs.deepseek.com/api/create-chat-completion/", "section":"Request · response_format", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"deepseek-tools", "title":"DeepSeek: Tool Calls", "locator":"https://api-docs.deepseek.com/guides/tool_calls/", "section":"工具调用示例及模型不执行函数的说明", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"lc-splitters", "title":"LangChain: Text splitter integrations", "locator":"https://docs.langchain.com/oss/python/integrations/splitters", "section":"Text structure-based / Length-based", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"faiss-metric", "title":"FAISS: MetricType and distances", "locator":"https://github.com/facebookresearch/faiss/wiki/MetricType-and-distances", "section":"How can I index vectors for cosine similarity?", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"lc-rag-eval", "title":"LangSmith: Evaluate a RAG application", "locator":"https://docs.langchain.com/langsmith/evaluate-rag-tutorial", "section":"Define evaluators", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"python-sqlite", "title":"Python 3.12: sqlite3", "locator":"https://docs.python.org/3.12/library/sqlite3.html", "section":"How to use the connection context manager", "source_type":"official_docs", "source_version":"3.12", "checked_at":"2026-11-20"},
+    {"id":"fastapi-async", "title":"FastAPI: Concurrency and async / await", "locator":"https://fastapi.tiangolo.com/async/", "section":"Path operation functions / Other utility functions", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"pydantic-strict", "title":"Pydantic: Strict Mode", "locator":"https://pydantic.dev/docs/validation/latest/concepts/strict_mode/", "section":"Strict Mode / As a validation parameter", "source_type":"official_docs", "checked_at":"2026-11-20"}
+  ],
+  "questions": [
+    {
+      "id":"agent-workflow-boundary", "stable_faiss_id":101, "revision":2, "dimension":"agent", "difficulty":"basic",
+      "content":"在一个固定顺序的问答流程中，工作流与 Agent 的主要区别是什么？",
+      "objective":"分辨代码预先规定路径与模型在权限内动态选动作。",
+      "answer_points":["工作流按预设步骤或条件分支执行。", "Agent 可以依当前信息动态决定后续步骤或工具调用。"],
+      "acceptable_alternatives":["用固定的面试状态推进对比由模型选择下一步检索还是追问，能说明决策权位置即可。"],
+      "common_errors":["把是否调用大模型当成唯一区别。", "认为有条件分支的流程就必然是 Agent。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["workflow","model-vs-code"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["lc-workflow"]
+    },
+    {
+      "id":"agent-interrupt-replay", "stable_faiss_id":102, "revision":2, "dimension":"agent", "difficulty":"applied",
+      "content":"LangGraph 节点先写数据库，再通过 interrupt 等用户输入。恢复后记录重复，你会怎么处理？",
+      "objective":"解释暂停恢复的节点重放，并给出可验证的数据库去重方案。",
+      "answer_points":["恢复时节点从头重跑，interrupt 前的写入可能再次执行。", "以操作 ID 和步骤键标识一次业务写入，用唯一约束保证重复执行复用结果。", "若写入与记录完成状态属于同一业务事务，避免已写入但未记账的窗口。"],
+      "acceptable_alternatives":["把前置写入移到独立步骤，说明该步骤遇到写成功后失败重试时仍需幂等。"],
+      "common_errors":["认为恢复从 interrupt 的下一行开始，节点前半段不会再次执行。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["langgraph","checkpoint","idempotency"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["lc-interrupt"]
+    },
+    {
+      "id":"agent-json-schema", "stable_faiss_id":103, "revision":2, "dimension":"agent", "difficulty":"basic",
+      "content":"模型输出能解析为 JSON，为什么还需要按业务 schema 校验？",
+      "objective":"分辨 JSON 语法、字段契约和业务真实性。",
+      "answer_points":["JSON 可解析只说明满足语法，不能保证字段齐全、类型正确或枚举和值域符合约定。", "应用先校验字段并对不合格结果走有限重试或降级，合格后再消费。", "字段合格仍需检查业务约束，例如评分引用是否来自实际回答。"],
+      "acceptable_alternatives":["以评分 0–4 和引用必须出现于原文为例，分别说明结构和值域检查与业务检查。"],
+      "common_errors":["把 JSON 对象模式等同于指定业务 schema 已通过。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["json","schema","prompt"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["deepseek-json","lc-structured"]
+    },
+    {
+      "id":"agent-tool-executor", "stable_faiss_id":104, "revision":2, "dimension":"agent", "difficulty":"basic",
+      "content":"模型返回一次工具调用后，从工具参数到工具结果之间由哪些组件负责？",
+      "objective":"辨认模型提出调用、应用执行、工具结果回传的职责。",
+      "answer_points":["模型回传工具名称和参数，应用根据已注册工具和参数约束判断能否执行。", "应用执行工具，将结果以对应工具调用 ID 关联后继续交给模型。"],
+      "acceptable_alternatives":["客户端或框架可封装校验与回传，但能明确实际运行函数的是应用控制的执行器。"],
+      "common_errors":["把模型生成工具调用参数理解为模型已经运行了应用中的函数。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["tool-calling","executor"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["deepseek-tools"]
+    },
+    {
+      "id":"rag-chunk-boundary", "stable_faiss_id":201, "revision":2, "dimension":"rag", "difficulty":"applied",
+      "content":"检索经常返回包含关键词、却缺少解释上下文的片段。你会如何验证问题是否出在切分？",
+      "objective":"围绕切分边界提出可对照的排查方法。",
+      "answer_points":["检查缺失内容是否在同一原文的相邻片段，排除原始资料本身缺失。", "用一组固定查询比较两种切分设置，固定嵌入模型与 TopK，检查完整证据是否被取回。", "尝试按段落或标题边界切分，或调整邻接重叠，检查上下文完整性与重复内容之间的取舍。"],
+      "acceptable_alternatives":["检索后回取相邻或父级段落作为对照，能够解释如何判断是否补回关键证据。"],
+      "common_errors":["只改生成提示词，未查看原文与检索回来的片段。", "同时更换模型、索引与切分策略，无法归因。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["chunking","evaluation"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["lc-splitters","lc-rag-eval"]
+    },
+    {
+      "id":"rag-cosine-faiss", "stable_faiss_id":202, "revision":2, "dimension":"rag", "difficulty":"basic",
+      "content":"想用 FAISS 的内积索引实现余弦相似度排序，建索引和查询时分别要做什么？",
+      "objective":"解释内积和余弦之间的归一化条件。",
+      "answer_points":["内积受向量长度影响，余弦相似度还除以两侧向量的范数。", "加入索引前对库向量做 L2 归一化，查询时对查询向量也做同样归一化，再按较大的内积排序。"],
+      "acceptable_alternatives":["用单位向量的平方 L2 距离排序，说明距离越小对应余弦越大。"],
+      "common_errors":["直接把未归一化的内积分数解释成余弦。", "只归一化查询向量，忽略库向量长度。", "把零向量当成可以正常比较余弦相似度的向量。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["faiss","cosine","normalization"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["faiss-metric"]
+    },
+    {
+      "id":"rag-failure-attribution", "stable_faiss_id":203, "revision":2, "dimension":"rag", "difficulty":"applied",
+      "content":"一个 RAG 系统给出了错误答案。怎样区分是证据没找到，还是模型拿到证据却没答对？",
+      "objective":"区分检索覆盖与生成正确性，提出独立诊断。",
+      "answer_points":["先看应支持答案的证据是否出现在实际传入生成器的上下文。", "证据缺失优先排查检索、过滤或上下文截断。证据充分时检查答案是否依托上下文以及是否与参考答案一致。", "可把人工确认的证据固定提供给同一生成流程，观察错误是否消失。"],
+      "acceptable_alternatives":["有标注时分别计算检索覆盖和生成正确率，并展示能支持错误归因的样例。"],
+      "common_errors":["仅看最终正确率就判断检索器有问题。", "仅凭检索片段与问题相关就认定它足以回答问题。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["retrieval","groundedness","evaluation"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["lc-rag-eval"]
+    },
+    {
+      "id":"backend-sqlite-context", "stable_faiss_id":301, "revision":2, "dimension":"backend", "difficulty":"basic",
+      "content":"在 Python sqlite3 中，退出 with conn 后数据库事务和连接各发生什么？",
+      "objective":"分清事务提交回滚和连接关闭两个生命周期。",
+      "answer_points":["存在打开事务时，正常退出提交，异常退出回滚。", "该上下文不会自动关闭连接，仍需显式 close 或外层 contextlib.closing 管理。"],
+      "acceptable_alternatives":["用事务结束后仍可使用连接说明差异，并指出没有打开事务时无事务可提交。"],
+      "common_errors":["认为 with conn 必然开启事务，且退出时一定关闭连接。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["python","sqlite","transaction"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["python-sqlite"]
+    },
+    {
+      "id":"backend-fastapi-blocking-io", "stable_faiss_id":302, "revision":2, "dimension":"backend", "difficulty":"applied",
+      "content":"FastAPI 的 async def 路由里直接调用同步网络 SDK，为什么可能拖慢同一事件循环上的其他请求，怎么改？",
+      "objective":"辨认同步阻塞 I/O 跨进事件循环的影响，给出安全替代。",
+      "answer_points":["同步网络 I/O 直接运行在该 async def 内时会阻塞事件循环，在返回前其他协程不能继续该事件循环上的执行。", "可使用异步客户端并 await，或把阻塞调用显式放线程池，也可用由 FastAPI 调度到线程池的同步路由。"],
+      "acceptable_alternatives":["能解释将请求交给后台任务或独立进程的适用条件，并保持错误和结果处理。"],
+      "common_errors":["认为把函数声明成 async def 就会自动使其内部的同步调用异步。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["fastapi","async","io"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["fastapi-async"]
+    },
+    {
+      "id":"backend-pydantic-strict", "stable_faiss_id":303, "revision":2, "dimension":"backend", "difficulty":"basic",
+      "content":"Pydantic 的 int 字段收到字符串 3 时，普通模式和严格模式可能有何不同？",
+      "objective":"区分类型转换和严格输入校验，避免把隐式转换当原始类型正确。",
+      "answer_points":["默认宽松校验通常将数字字符串转换为整数。", "严格模式的 int 字段拒绝字符串，可按字段或校验调用开启严格模式。"],
+      "acceptable_alternatives":["可用题目 revision 作为例子，同时说明有些其他类型的 JSON 严格模式规则不同。"],
+      "common_errors":["认为默认类型标注会拒绝所有可转换的输入。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["pydantic","strict-validation"],
+      "status":"verified", "checked_at":"2026-11-20", "source_refs":["pydantic-strict"]
+    }
+  ]
+}
