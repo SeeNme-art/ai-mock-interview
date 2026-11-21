@@ -9,12 +9,14 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
+from app.schemas.scoring import CONTENT_DIMENSIONS, KnowledgeDimension
+
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 Identifier = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_-]{1,63}$")]
 PositiveInt = Annotated[int, Field(strict=True, gt=0, le=2**63 - 1)]
 Dimension = Literal["agent", "rag", "backend"]
 Difficulty = Literal["basic", "applied"]
-RatingDimension = Literal["correctness", "depth", "structure", "relevance"]
+RatingDimension = KnowledgeDimension
 
 
 def prompt_key(text: str) -> str:
@@ -66,7 +68,7 @@ class Question(SeedRecord):
             raise ValueError("同一题的来源不能重复")
         if len(set(self.applicable_dimensions)) != len(self.applicable_dimensions):
             raise ValueError("评分维度不能重复")
-        if not {"correctness", "depth"}.intersection(self.applicable_dimensions):
+        if not CONTENT_DIMENSIONS["knowledge"].intersection(self.applicable_dimensions):
             raise ValueError("知识题至少考察一个技术内容维度")
         return self
 
