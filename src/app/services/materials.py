@@ -6,17 +6,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
-import re
 import unicodedata
 from uuid import uuid4
 
 from app.core.logging_setup import mask
-from app.db.sqlite import canonical_json, check_schema, connect, initialize_or_check, sha256
+from app.db.business import OWNER_ID, check_business_schema, initialize_business, validate_request_key
+from app.db.sqlite import canonical_json, connect, sha256
 from app.schemas.materials import Confirmation, InputMode, MaterialInput
 
-SCHEMA_VERSION = 1
-MIGRATION = Path(__file__).resolve().parents[1] / "db" / "migrations" / "001_init.sql"
-OWNER_ID = "local"
 DRAFT_TTL = timedelta(minutes=30)
 TEXT_LIMIT = 16000
 
@@ -82,14 +79,13 @@ def _profile_snapshot(material: MaterialInput, draft: MaterialDraft) -> dict:
 
 def confirm_material(path: Path, draft_id: str, key: str, confirmation: Confirmation,
                      *, draft: MaterialDraft | None = None) -> str:
-    if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", key) is None:
-        raise ValueError("确认请求标识格式无效")
+    validate_request_key(key)
     validate_material(confirmation.material)
     digest = sha256(canonical_json({"draft_id": draft_id, **confirmation.model_dump(mode="json")}))
     path.parent.mkdir(parents=True, exist_ok=True)
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        initialize_or_check(db, MIGRATION, SCHEMA_VERSION, "业务库")
+        initialize_business(db)
         previous = db.execute("""SELECT id, confirmation_hash FROM interview_session
                                  WHERE owner_id=? AND confirmation_key=?""", (OWNER_ID, key)).fetchone()
         if previous:
@@ -117,7 +113,7 @@ def confirm_material(path: Path, draft_id: str, key: str, confirmation: Confirma
 def load_material(path: Path, session_id: str) -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
-        check_schema(db, SCHEMA_VERSION, sha256(MIGRATION.read_text(encoding="utf-8")), "业务库")
+        check_business_schema(db)
         row = db.execute("""SELECT id AS session_id, phase, revision, mode, input_mode, jd_text,
                                    resume_profile_json, created_at
                             FROM interview_session WHERE id=? AND owner_id=? AND delete_state='none'""",
