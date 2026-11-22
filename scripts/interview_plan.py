@@ -27,6 +27,9 @@ def main() -> int:
     build.add_argument("--direction", action="append", choices=DIRECTIONS)
     build.add_argument("--difficulty", choices=("basic", "applied"))
     build.add_argument("--count", type=int, choices=(5, 8))
+    build.add_argument("--vector", action="store_true", help="rank reviewed questions with the existing local FAISS index")
+    build.add_argument("--model-dir", type=Path, default=ROOT / "data" / "index" / "bge-small-zh-v1.5")
+    build.add_argument("--index-dir", type=Path, default=ROOT / "data" / "index" / "questions")
     actions.add_parser("show", help="read the saved plan summary").add_argument("session_id")
     args = parser.parse_args()
     try:
@@ -34,7 +37,8 @@ def main() -> int:
             result = show_plan(args.db, args.session_id)
         else:
             changes = PlanChanges(directions=args.direction, difficulty=args.difficulty, question_count=args.count)
-            result = rebuild_plan(args.db, args.bank, args.session_id, args.expected_revision, args.key, changes)
+            vector = (args.model_dir, args.index_dir) if args.vector else None
+            result = rebuild_plan(args.db, args.bank, args.session_id, args.expected_revision, args.key, changes, vector=vector)
     except PlanningError as exc:
         print(json.dumps({"code": exc.code, "message": str(exc), "current_revision": exc.current_revision},
                          ensure_ascii=False), file=sys.stderr)

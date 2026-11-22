@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from app.db.business import MIGRATIONS
 from app.db.sqlite import connect, initialize_or_check
 from app.kb.seed import SeedBank, read_seed
-from app.kb.store import import_seed
+from app.kb.store import import_seed, list_questions
 from app.schemas.materials import Confirmation, MaterialInput, ProjectInput
 from app.schemas.planning import PlanChanges
 from app.services.materials import confirm_material, load_material, start_draft
@@ -66,6 +66,40 @@ class InterviewPlanTests(unittest.TestCase):
             self.assertEqual((row["dimension"], row["difficulty"], row["question_revision"]),
                              (question.dimension, question.difficulty, question.revision))
             self.assertEqual(json.loads(row["scoring_targets_json"]), question.applicable_dimensions)
+
+    def test_vector_ranks_only_current_reviewed_rows_and_replays_without_model(self):
+        from app.services.first_question import accept_start, prepare_first_question, start_epoch
+
+        session = self.session(mode="knowledge_only")
+        vector = (self.db.parent / "model", self.db.parent / "index")
+
+        def reverse_order(bank, _, embedder, *, dimension, difficulty, jd, skills, **params):
+            self.assertEqual((jd, skills), ("仅在会话内保存的合成 JD", ["仅限材料的技能"]))
+            rows = list_questions(bank, dimension=dimension, difficulty=difficulty)
+            return [{"question": row, "index_version": "fixture", "query_version": "fixture-v1"} for row in reversed(rows)]
+
+        with patch("app.kb.embedding.LocalChineseEmbedder"), patch("app.kb.retrieval.search_questions", side_effect=reverse_order):
+            result = rebuild_plan(self.db, self.bank, session, 1, "rank", PlanChanges(), vector=vector)
+        self.assertEqual(result["retrieval"]["method"], "faiss")
+        first = self.rows(session)[0]
+        latest = list_questions(self.bank, dimension=first["dimension"], difficulty=first["difficulty"])[-1]
+        self.assertEqual((first["question_id"], first["form_reason"]), (latest["id"], "verified_bank_faiss"))
+        self.assertNotIn("合成 JD", json.dumps(result, ensure_ascii=False))
+        with patch("app.kb.embedding.LocalChineseEmbedder", side_effect=AssertionError("replay")):
+            self.assertEqual(rebuild_plan(self.db, self.bank, session, 1, "rank", PlanChanges(), vector=vector), result)
+        operation, _ = accept_start(self.db, session, result["revision"], "start")
+        prepare_first_question(self.db, self.bank, session, operation, start_epoch(self.db, session, operation))
+        with closing(connect(self.db, readonly=True)) as db:
+            snapshot = json.loads(db.execute("SELECT question_snapshot_json FROM turn").fetchone()[0])
+            self.assertEqual((snapshot["id"], snapshot["selection_method"]), (first["question_id"], "faiss"))
+
+    def test_missing_local_embedding_falls_back_without_losing_five_question_plan(self):
+        session = self.session(mode="knowledge_only")
+        folder = self.db.parent / "missing"
+        result = rebuild_plan(self.db, self.bank, session, 1, "rank", PlanChanges(), vector=(folder, folder))
+        self.assertEqual(result["retrieval"], {"method": "sqlite", "reason": "VECTOR_UNAVAILABLE"})
+        self.assertEqual(result["counts"], {"knowledge": 5, "project": 0})
+        self.assertEqual({row["form_reason"] for row in self.rows(session)}, {"verified_bank"})
 
     def test_project_fallback_uses_reviewed_knowledge_and_explains_quota(self):
         session = self.session(ProjectInput(action="实现检索分块"))

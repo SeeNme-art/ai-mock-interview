@@ -47,6 +47,8 @@ def _store_question(db: sqlite3.Connection, slot: sqlite3.Row, question: dict, r
     turn_id, exchange_id = uuid4().hex, uuid4().hex
     snapshot = {"id": question["id"], "revision": question["revision"], "content_hash": question["content_hash"],
                 "objective": question["objective"], "plan_version": slot["plan_version"]}
+    if reason is None and slot["form_reason"] == "verified_bank_faiss":
+        snapshot["selection_method"] = "faiss"
     rubric_keys = ("applicable_dimensions", "answer_points", "acceptable_alternatives", "common_errors")
     rubric = {"task_type": "knowledge", "rubric_version": RUBRIC_VERSION,
               **{key: question[key] for key in rubric_keys}}

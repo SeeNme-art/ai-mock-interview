@@ -30,6 +30,7 @@ _PROJECT_TARGETS = {
     "action": ("实施与个人贡献", ("implementation_ownership",)),
     "result": ("验证方法与证据", ("validation_evidence",)),
 }
+_SEARCH_OBJECTIVES = {"agent": "Agent 工作流与工具调用", "rag": "检索、召回与答案证据", "backend": "后端接口与数据一致性"}
 
 
 PlanningError = SessionError
@@ -80,7 +81,7 @@ def _project_slots(projects: list[dict], remaining: dict[str, deque], quota: int
 
 
 def _build_slots(questions: list[dict], projects: list[dict], directions: list[str], count: int,
-                 mode: str) -> list[PlanSlot]:
+                 mode: str, ranked: set[str]) -> list[PlanSlot]:
     remaining = {key: deque() for key in directions}
     seen_topics = set()
     for row in questions:
@@ -104,7 +105,7 @@ def _build_slots(questions: list[dict], projects: list[dict], directions: list[s
         row = remaining[direction].popleft()
         knowledge.append(PlanSlot("knowledge", direction, row["objective"], "original",
                                   tuple(row["applicable_dimensions"]), question_id=row["id"], question_revision=row["revision"],
-                                  form_reason="verified_bank"))
+                                  form_reason="verified_bank_faiss" if row["id"] in ranked else "verified_bank"))
         counts[direction] += 1
     return [slot for pair in zip_longest(knowledge, project) for slot in pair if slot is not None]
 
@@ -144,38 +145,104 @@ def show_plan(path: Path, session_id: str) -> dict:
         return _summary(db, session)
 
 
+def _checked_session(db: sqlite3.Connection, session_id: str, expected_revision: int, key: str, digest: str):
+    version = check_business_schema(db)
+    session = find_session(db, session_id)
+    replay = find_replay(db, "rebuild_plan", key, digest) if version >= 2 else None
+    if replay:
+        return version, session, json.loads(replay["result_refs_json"])
+    revision = session["revision"]
+    if session["phase"] != "PLANNING":
+        raise PlanningError("ILLEGAL_ACTION", "面试开始后计划已冻结", current_revision=revision)
+    if revision != expected_revision:
+        raise PlanningError("STALE_REVISION", "会话进度已更新，请刷新后再生成计划", current_revision=revision)
+    if version >= 2:
+        ensure_session_idle(db, session)
+    return version, session, None
+
+
+def _rank(bank: Path, vector: tuple[Path, Path], session: sqlite3.Row, directions: list[str], difficulty: str,
+          questions: list[dict], skills: list[str]) -> tuple[list[dict], set[str], dict]:
+    model_dir, index_dir = vector
+    try:
+        from app.kb.embedding import LocalChineseEmbedder
+        from app.kb.retrieval import search_questions
+
+        embedder = LocalChineseEmbedder(model_dir)
+        # Ranking only applies to the exact reviewed rows read for this plan.
+        ordered = {}
+        versions = {}
+        for direction in directions:
+            results = search_questions(bank, index_dir, embedder, objective=_SEARCH_OBJECTIVES[direction],
+                                       dimension=direction, difficulty=difficulty, jd=session["jd_text"] or "",
+                                       skills=skills, top_k=len(questions))
+            for position, result in enumerate(results):
+                question = result["question"]
+                ordered[(question["id"], question["revision"], question["content_hash"])] = position
+            if results:
+                versions[direction] = {name: results[0][name] for name in ("index_version", "query_version")}
+    except (ImportError, OSError, RuntimeError, ValueError):
+        return questions, set(), {"method": "sqlite", "reason": "VECTOR_UNAVAILABLE"}
+    if not ordered:
+        return questions, set(), {"method": "sqlite", "reason": "NO_RANKED_CANDIDATES"}
+    if len({item["index_version"] for item in versions.values()}) > 1:
+        return questions, set(), {"method": "sqlite", "reason": "INDEX_CHANGED"}
+
+    def rank_of(row):
+        return ordered.get((row["id"], row["revision"], row["content_hash"]), len(questions))
+
+    ranked = {row["id"] for row in questions if rank_of(row) < len(questions)}
+    if not ranked:
+        return questions, set(), {"method": "sqlite", "reason": "BANK_CHANGED"}
+    return sorted(questions, key=rank_of), ranked, {"method": "faiss", "versions": versions}
+
+
 def rebuild_plan(path: Path, bank: Path, session_id: str, expected_revision: int, key: str,
-                 changes: PlanChanges) -> dict:
+                 changes: PlanChanges, *, vector: tuple[Path, Path] | None = None) -> dict:
     validate_request_key(key)
     if type(expected_revision) is not int or expected_revision < 1:
         raise ValueError("会话 revision 须为正整数")
     if not path.is_file():
         raise PlanningError("RESOURCE_NOT_FOUND", "业务库尚未创建，请先确认材料")
     options = changes.model_dump(exclude_none=True, mode="json")
-    request = canonical_json({"session_id": session_id, "expected_revision": expected_revision, **options})
+    request = canonical_json({"session_id": session_id, "expected_revision": expected_revision, **options,
+                              **({"ranking": "faiss"} if vector else {})})
     digest = sha256(request)
+    retrieval = None
+    if vector is not None:
+        with closing(connect(path, readonly=True)) as db, db:
+            db.execute("BEGIN")
+            version, session, replay = _checked_session(db, session_id, expected_revision, key, digest)
+            if replay is not None:
+                return replay
+        if not bank.is_file():
+            raise PlanningError("QUESTION_UNAVAILABLE", "审核题库尚未导入，请先初始化题库")
+        directions = changes.directions or json.loads(session["selected_dimensions_json"])
+        difficulty = changes.difficulty or (session["difficulty"] if version >= 2 else "basic")
+        questions = list_questions(bank, difficulty=difficulty)
+        if questions:
+            questions, ranked, retrieval = _rank(bank, vector, session, directions, difficulty, questions,
+                                                  json.loads(session["resume_profile_json"])["candidate"]["skills"])
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        version = check_business_schema(db)
-        session = find_session(db, session_id)
-        if version >= 2:
-            operation = find_replay(db, "rebuild_plan", key, digest)
-            if operation:
-                return json.loads(operation["result_refs_json"])
-        if session["phase"] != "PLANNING":
-            raise PlanningError("ILLEGAL_ACTION", "面试开始后计划已冻结", current_revision=session["revision"])
-        if session["revision"] != expected_revision:
-            raise PlanningError("STALE_REVISION", "会话进度已更新，请刷新后再生成计划", current_revision=session["revision"])
-        if version >= 2:
-            ensure_session_idle(db, session)
-
+        version, session, replay = _checked_session(db, session_id, expected_revision, key, digest)
+        if replay is not None:
+            return replay
         directions = changes.directions or json.loads(session["selected_dimensions_json"])
         difficulty = changes.difficulty or (session["difficulty"] if version >= 2 else "basic")
         count = changes.question_count or session["question_count"]
         projects = json.loads(session["resume_profile_json"])["projects"]
         if not bank.is_file():
             raise PlanningError("QUESTION_UNAVAILABLE", "审核题库尚未导入，请先初始化题库")
-        slots = _build_slots(list_questions(bank, difficulty=difficulty), projects, directions, count, session["mode"])
+        current_questions = list_questions(bank, difficulty=difficulty)
+        if retrieval is not None and retrieval["method"] == "faiss":
+            stamps = {(row["id"], row["revision"], row["content_hash"]) for row in current_questions}
+            if stamps == {(row["id"], row["revision"], row["content_hash"]) for row in questions}:
+                current_questions = questions
+            else:
+                retrieval = {"method": "sqlite", "reason": "BANK_CHANGED"}
+        slots = _build_slots(current_questions, projects, directions, count, session["mode"],
+                             ranked if retrieval is not None and retrieval["method"] == "faiss" else set())
         if version == 1:
             upgrade_business(db, path, 2)
 
@@ -193,6 +260,8 @@ def rebuild_plan(path: Path, bank: Path, session_id: str, expected_revision: int
                       question_count=?, selected_dimensions_json=? WHERE id=? AND owner_id=?""",
                    (plan_version, difficulty, count, canonical_json(directions), session_id, OWNER_ID))
         result = _summary(db, find_session(db, session_id))
+        if retrieval is not None:
+            result["retrieval"] = retrieval
         now = datetime.now(UTC).isoformat()
         db.execute("""INSERT INTO operation (id, session_id, owner_id, kind, idempotency_key, request_hash,
                       expected_epoch, status, safe_request_json, result_refs_json, created_at, updated_at)
