@@ -96,7 +96,8 @@ def _read_content(status: int, payload: dict | None, model: str) -> dict:
 
 
 class DeepSeekGateway:
-    def __init__(self, path: Path, settings: Settings, price: PriceSnapshot, *, transport: Transport = _post_chat):
+    def __init__(self, path: Path, settings: Settings, price: PriceSnapshot, *, transport: Transport = _post_chat,
+                 max_input_tokens: int | None = None):
         api_key = settings.deepseek_api_key.strip()
         if not api_key or not api_key.isascii() or not api_key.isprintable() or any(char.isspace() for char in api_key):
             raise SessionError("CONFIGURATION_ERROR", "DeepSeek 凭据缺失或格式无效")
@@ -107,6 +108,7 @@ class DeepSeekGateway:
         self._price = price
         self._timeout_s = settings.llm_timeout_s
         self._transport = transport
+        self._max_input = max_input_tokens
 
     def invoke_json(self, session_id: str, operation_id: str, step_key: str, *, role: str,
                     attempt_no: int, system_prompt: str, user_prompt: str, max_output_tokens: int) -> dict:
@@ -121,6 +123,8 @@ class DeepSeekGateway:
             estimated_input = sum(len(message["content"].encode("utf-8")) for message in messages) + INPUT_OVERHEAD
         except UnicodeError:
             raise SessionError("INVALID_INPUT", "模型消息必须是有效的 Unicode 文本") from None
+        if self._max_input is not None and estimated_input > self._max_input:
+            raise SessionError("INPUT_TOO_LARGE", "本次问答超过模型输入限额，已保留本地问答")
 
         def send_once(output_limit: int) -> tuple[tuple[int, dict | None, Usage | None], Usage | None]:
             body = json.dumps({
@@ -138,4 +142,6 @@ class DeepSeekGateway:
         )
         if usage is not None and usage.output_tokens > max_output_tokens:
             raise SessionError("OUTPUT_INVALID", "供应商返回的输出用量超过请求上限")
+        if usage is not None and usage.input_tokens > estimated_input:
+            raise SessionError("USAGE_OVER_PLAN", "供应商输入用量超出预估，请暂停并核对")
         return _read_content(status, payload, self._price.model)

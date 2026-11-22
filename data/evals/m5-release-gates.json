@@ -1,0 +1,24 @@
+{
+  "version": "m5-gates-v1",
+  "model": "deepseek-flash",
+  "pricing": {
+    "version": "deepseek-peak-2026-11-22",
+    "input_nanos_per_token": 300,
+    "output_nanos_per_token": 1200
+  },
+  "trial": {
+    "budget_nanos": 120000000,
+    "max_requests": 40,
+    "input_limit": 4000,
+    "output_limit": 1200
+  },
+  "holdout": {
+    "probe_valid_min": 8,
+    "probe_acceptable_min": 7,
+    "score_valid_min": 8,
+    "score_acceptable_min": 7,
+    "forbidden_published_results_max": 0,
+    "retrieval_recall_at_3_min": 0.75,
+    "materials_min": 5
+  }
+}
