@@ -1,0 +1,429 @@
+{
+  "split": "holdout",
+  "datasets": {
+    "core": {
+      "version": "m4-eval-v1",
+      "sha256": "c2e465da6b06862d3f3aa75bc3a1a9bf6363c7783f329e89b3421b3df4fde808"
+    },
+    "retrieval": {
+      "version": "m4-eval-v1",
+      "sha256": "48ae1d0245918afe4a15b6f56ca7e8cf6e94a717713d044dc279b58162f1ac34"
+    },
+    "materials": {
+      "version": "m4-eval-v1",
+      "sha256": "ecb8a0933bdaa16fd775116b3b3d8912bca76c30de4e6c689ef595385d8a3e08"
+    }
+  },
+  "sample_counts": {
+    "core": 20,
+    "retrieval": 30,
+    "materials": 10
+  },
+  "core": {
+    "selected": 10,
+    "status": "labels_checked_only"
+  },
+  "materials": {
+    "passing": 5,
+    "samples": 5,
+    "cases": [
+      {
+        "id": "M06",
+        "format": "text",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M07",
+        "format": "text",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M08",
+        "format": "docx",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M09",
+        "format": "pdf",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M10",
+        "format": "pdf",
+        "columns": 2,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      }
+    ]
+  },
+  "retrieval": {
+    "embedding_model": "BAAI/bge-small-zh-v1.5@46fbe35fd4374a00fee7de77dfddaeb6dd6a2c59/fastembed-0.9.1/onnxruntime-1.32.0/tokenizers-0.23.3",
+    "index_sha256": "b9b0091539ee05bd873e7c0bcc175a718e5fe98291b4dec700c9c16d8a773abd",
+    "seed_sha256": "3cb565d0b2acce5b4b80f6b90c7f9f817bbb63fff216d54f0a76688ebd6818f8",
+    "query_version": "objective-jd-skills-v1",
+    "comparison": {
+      "sqlite": {
+        "positives": 15,
+        "hit_at_3": 0.6,
+        "recall_at_3": 0.5333333333333333,
+        "mrr_at_3": 0.3333333333333333,
+        "no_candidate_samples": 0,
+        "no_candidate_correct": 0
+      },
+      "faiss": {
+        "positives": 15,
+        "hit_at_3": 1.0,
+        "recall_at_3": 0.9666666666666667,
+        "mrr_at_3": 0.9333333333333333,
+        "no_candidate_samples": 0,
+        "no_candidate_correct": 0
+      }
+    },
+    "directions": {
+      "agent": {
+        "sqlite": {
+          "positives": 5,
+          "hit_at_3": 0.8,
+          "recall_at_3": 0.6,
+          "mrr_at_3": 0.3333333333333333,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        },
+        "faiss": {
+          "positives": 5,
+          "hit_at_3": 1.0,
+          "recall_at_3": 1.0,
+          "mrr_at_3": 0.9,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        }
+      },
+      "rag": {
+        "sqlite": {
+          "positives": 5,
+          "hit_at_3": 0.4,
+          "recall_at_3": 0.4,
+          "mrr_at_3": 0.3,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        },
+        "faiss": {
+          "positives": 5,
+          "hit_at_3": 1.0,
+          "recall_at_3": 0.9,
+          "mrr_at_3": 0.9,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        }
+      },
+      "backend": {
+        "sqlite": {
+          "positives": 5,
+          "hit_at_3": 0.6,
+          "recall_at_3": 0.6,
+          "mrr_at_3": 0.36666666666666664,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        },
+        "faiss": {
+          "positives": 5,
+          "hit_at_3": 1.0,
+          "recall_at_3": 1.0,
+          "mrr_at_3": 1.0,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        }
+      }
+    },
+    "cases": [
+      {
+        "id": "R16",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-state-reducer"
+        ],
+        "sqlite": [
+          "agent-workflow-boundary",
+          "agent-json-schema",
+          "agent-tool-executor"
+        ],
+        "faiss": [
+          "agent-state-reducer",
+          "agent-workflow-boundary",
+          "agent-thread-isolation"
+        ]
+      },
+      {
+        "id": "R17",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-tool-executor"
+        ],
+        "sqlite": [
+          "agent-workflow-boundary",
+          "agent-json-schema",
+          "agent-tool-executor"
+        ],
+        "faiss": [
+          "agent-tool-executor",
+          "agent-workflow-boundary",
+          "agent-thread-isolation"
+        ]
+      },
+      {
+        "id": "R18",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-retry-policy",
+          "agent-tool-time-budget"
+        ],
+        "sqlite": [
+          "agent-interrupt-replay",
+          "agent-retry-policy",
+          "agent-tool-schema-mismatch"
+        ],
+        "faiss": [
+          "agent-tool-schema-mismatch",
+          "agent-retry-policy",
+          "agent-tool-time-budget"
+        ]
+      },
+      {
+        "id": "R19",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-tool-schema-mismatch"
+        ],
+        "sqlite": [
+          "agent-interrupt-replay",
+          "agent-retry-policy",
+          "agent-tool-schema-mismatch"
+        ],
+        "faiss": [
+          "agent-tool-schema-mismatch",
+          "agent-parallel-join",
+          "agent-retry-policy"
+        ]
+      },
+      {
+        "id": "R20",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-tool-time-budget",
+          "agent-retry-policy"
+        ],
+        "sqlite": [
+          "agent-interrupt-replay",
+          "agent-retry-policy",
+          "agent-tool-schema-mismatch"
+        ],
+        "faiss": [
+          "agent-tool-time-budget",
+          "agent-tool-schema-mismatch",
+          "agent-retry-policy"
+        ]
+      },
+      {
+        "id": "R21",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-hard-filter"
+        ],
+        "sqlite": [
+          "rag-cosine-faiss",
+          "rag-top-k",
+          "rag-recall-at-k"
+        ],
+        "faiss": [
+          "rag-top-k",
+          "rag-hard-filter",
+          "rag-index-rebuild"
+        ]
+      },
+      {
+        "id": "R22",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-recall-at-k",
+          "rag-top-k"
+        ],
+        "sqlite": [
+          "rag-cosine-faiss",
+          "rag-top-k",
+          "rag-recall-at-k"
+        ],
+        "faiss": [
+          "rag-recall-at-k",
+          "rag-hard-filter",
+          "rag-top-k"
+        ]
+      },
+      {
+        "id": "R23",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-index-rebuild"
+        ],
+        "sqlite": [
+          "rag-cosine-faiss",
+          "rag-top-k",
+          "rag-recall-at-k"
+        ],
+        "faiss": [
+          "rag-index-rebuild",
+          "rag-top-k",
+          "rag-cosine-faiss"
+        ]
+      },
+      {
+        "id": "R24",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-document-updates"
+        ],
+        "sqlite": [
+          "rag-chunk-boundary",
+          "rag-failure-attribution",
+          "rag-rrf"
+        ],
+        "faiss": [
+          "rag-document-updates",
+          "rag-chunk-boundary",
+          "rag-empty-gold"
+        ]
+      },
+      {
+        "id": "R25",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-chunk-boundary",
+          "rag-failure-attribution"
+        ],
+        "sqlite": [
+          "rag-chunk-boundary",
+          "rag-failure-attribution",
+          "rag-rrf"
+        ],
+        "faiss": [
+          "rag-chunk-boundary",
+          "rag-empty-gold",
+          "rag-document-updates"
+        ]
+      },
+      {
+        "id": "R26",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-http-idempotent"
+        ],
+        "sqlite": [
+          "backend-sqlite-context",
+          "backend-pydantic-strict",
+          "backend-http-idempotent"
+        ],
+        "faiss": [
+          "backend-http-idempotent",
+          "backend-sqlite-context",
+          "backend-response-filter"
+        ]
+      },
+      {
+        "id": "R27",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-pydantic-strict"
+        ],
+        "sqlite": [
+          "backend-sqlite-context",
+          "backend-pydantic-strict",
+          "backend-http-idempotent"
+        ],
+        "faiss": [
+          "backend-pydantic-strict",
+          "backend-response-filter",
+          "backend-sqlite-context"
+        ]
+      },
+      {
+        "id": "R28",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-page-cursor"
+        ],
+        "sqlite": [
+          "backend-fastapi-blocking-io",
+          "backend-wal-writer",
+          "backend-stale-write"
+        ],
+        "faiss": [
+          "backend-page-cursor",
+          "backend-unique-request",
+          "backend-stale-write"
+        ]
+      },
+      {
+        "id": "R29",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-unique-request"
+        ],
+        "sqlite": [
+          "backend-fastapi-blocking-io",
+          "backend-wal-writer",
+          "backend-stale-write"
+        ],
+        "faiss": [
+          "backend-unique-request",
+          "backend-wal-writer",
+          "backend-stale-write"
+        ]
+      },
+      {
+        "id": "R30",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-fastapi-blocking-io"
+        ],
+        "sqlite": [
+          "backend-fastapi-blocking-io",
+          "backend-wal-writer",
+          "backend-stale-write"
+        ],
+        "faiss": [
+          "backend-fastapi-blocking-io",
+          "backend-unique-request",
+          "backend-wal-writer"
+        ]
+      }
+    ]
+  },
+  "paid_model_calls": 0
+}

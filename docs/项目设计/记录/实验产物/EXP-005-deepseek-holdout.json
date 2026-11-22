@@ -1,0 +1,1014 @@
+{
+  "split": "holdout",
+  "fingerprint": {
+    "labels": {
+      "version": "m4-eval-v1",
+      "sha256": "c2e465da6b06862d3f3aa75bc3a1a9bf6363c7783f329e89b3421b3df4fde808"
+    },
+    "price": {
+      "model": "deepseek-flash",
+      "version": "deepseek-peak-2026-11-22",
+      "input_nanos_per_token": 300,
+      "output_nanos_per_token": 1200,
+      "cached_input_nanos_per_token": null
+    },
+    "limits": {
+      "budget_nanos": 120000000,
+      "max_requests": 40,
+      "input_limit": 4000,
+      "output_limit": 1200
+    },
+    "gate_version": "m5-gates-v1",
+    "seed_sha256": "3cb565d0b2acce5b4b80f6b90c7f9f817bbb63fff216d54f0a76688ebd6818f8",
+    "gates_sha256": "dca0f779bbe4a165332e34fed3d9eb8436b41dc9dc6692d18cb71421d805d884",
+    "code_sha256": {
+      "evaluate_live.py": "4a8f37b9897fcf65627c0d86437466754ed31405feff6e142f6cef2ee8d622be",
+      "model_steps.py": "23ab5902c1a8c7f440b41f3927d458e12b57f07277029ee1a9a1997df117c82d",
+      "model_gateway.py": "361cce59a1ae3b5410cc06c0fc34316432a0f25f2ae88924ac3cf03203969997",
+      "budget.py": "2bd80eca582f1e457e56fa4632016455ccb4bd7719914a16be9b983cb4e4fbe4",
+      "probing.py": "9109c9781d598659cdddda012c955141d6f56651b8ea0242b2252299b84cbddd",
+      "scoring.py": "669c5a9caff3411d6a3ecfe4faf11f64b075e41a6204a5c38458879e9da3e431",
+      "evaluation.py": "310e69c898c0c9ef0272175eb5f8386aba7f3d4d3317ab08b455b29d9a684384"
+    }
+  },
+  "cases": [
+    {
+      "id": "Q11",
+      "task_type": "knowledge",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": true,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.5,
+        "output": {
+          "should_probe": true,
+          "purpose": "clarify",
+          "reason": "唯一的回答（e0）没有回答关于修订号避免旧表单覆盖的问题，只说了页面设计与表单样式，完全未涉及修订号、条件请求或写事务原子比较等考察点，需要追问具体机制。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "我通常会把页面设计成暗色，再统一表单的字体和间距。",
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "probe_question": "你提到主要做页面设计层面的调整；那具体在提交表单时，你会怎样用修订号（例如在请求里带预期修订或 If-Match）来确保旧表单不会覆盖新数据？"
+        }
+      },
+      "score": {
+        "valid": true,
+        "acceptable": true,
+        "error": null,
+        "elapsed_s": 1.719,
+        "output": {
+          "task_type": "knowledge",
+          "rubric_version": "knowledge-v1",
+          "dimensions": {
+            "correctness": {
+              "applicable": true,
+              "value": 0,
+              "reason": "回答只泛泛谈页面配色和表单样式，未涉及修订号比较、原子写、条件更新或受影响行数检查等核心机制，也无任何有效技术内容。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "我通常会把页面设计成暗色，再统一表单的字体和间距。",
+                  "start": 0,
+                  "end": 25
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "depth": {
+              "applicable": false,
+              "value": null,
+              "reason": "rubric 未将该维度列为适用维度。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "structure": {
+              "applicable": false,
+              "value": null,
+              "reason": "rubric 未将该维度列为适用维度。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "relevance": {
+              "applicable": true,
+              "value": 0,
+              "reason": "回答完全偏离“用修订号避免旧表单覆盖”的问题，答非所问；未提供请求带预期修订、冲突拒绝或读取新状态等任何相关内容。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "我通常会把页面设计成暗色，再统一表单的字体和间距。",
+                  "start": 0,
+                  "end": 25
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            }
+          },
+          "uncertainties": [
+            {
+              "type": "unverifiable_claim",
+              "message": "回答未涉及任何项目事实，无法核验其与已确认的多标签页提交业务训练的关系。"
+            }
+          ],
+          "comment": null,
+          "improvements": []
+        }
+      }
+    },
+    {
+      "id": "Q12",
+      "task_type": "project",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": true,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.656,
+        "output": {
+          "should_probe": true,
+          "purpose": "check_consistency",
+          "reason": "回答先声明“没有部署上线”，却紧接着给出“线上每天稳定处理了十万请求”的具体规模，两者在事实层面直接冲突；追问可澄清该数字是实测、目标还是估算，从而判断接口延迟评估的数据基础是否可信。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "没有部署上线，但我觉得线上每天稳定处理了十万请求。",
+              "start": 0,
+              "end": 25
+            }
+          ],
+          "probe_question": "你提到“没有部署上线”，那“线上每天稳定处理了十万请求”这个数字具体来自哪里？是压测结果、容量规划目标，还是实际观测？"
+        }
+      },
+      "score": {
+        "valid": true,
+        "acceptable": true,
+        "error": null,
+        "elapsed_s": 2.688,
+        "output": {
+          "task_type": "project",
+          "rubric_version": "project-v1",
+          "dimensions": {
+            "technical_reasoning": {
+              "applicable": true,
+              "value": 1,
+              "reason": "回答没有说明延迟评估所用数据的方法或来源；'线上每天稳定处理了十万请求'与前句'没有部署上线'自相矛盾，推理链条不成立，也缺少技术细节。应明确数据来源（本机压测/合成流量）、指标口径和测量方式。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "没有部署上线，但我觉得线上每天稳定处理了十万请求。",
+                  "start": 0,
+                  "end": 25
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "implementation_ownership": {
+              "applicable": false,
+              "value": null,
+              "reason": "本维度不适用于本题评分。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "validation_evidence": {
+              "applicable": true,
+              "value": 0,
+              "reason": "题目问用了哪些数据评估接口延迟，回答未给出任何具体数据、压测记录或指标数值（P50/P95/吞吐），仅凭主观'我觉得'支撑，且与自述未上线矛盾，无法作为验证证据。应补充本机压测的延迟分位数、样本量和测试条件。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "没有部署上线，但我觉得线上每天稳定处理了十万请求。",
+                  "start": 0,
+                  "end": 25
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "communication": {
+              "applicable": false,
+              "value": null,
+              "reason": "本维度不适用于本题评分。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            }
+          },
+          "uncertainties": [
+            {
+              "type": "project_fact",
+              "message": "候选人自述未部署上线，却称线上每天稳定处理十万请求，两者矛盾，无法核实真实运行与数据来源。"
+            }
+          ],
+          "comment": null,
+          "improvements": []
+        }
+      }
+    },
+    {
+      "id": "Q13",
+      "task_type": "knowledge",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": true,
+        "reason": "no_probe",
+        "error": null,
+        "elapsed_s": 1.656,
+        "output": {
+          "should_probe": false,
+          "purpose": null,
+          "reason": "现有问答已直接回应目标问题：e0 的回答说明“两次以后资源都不存在，响应码可以不同”，与参考要点一致，足以覆盖幂等性与状态码差异的核心判断，无需再追问。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "可以，两次以后资源都不存在，响应码可以不同。",
+              "start": 0,
+              "end": 22
+            }
+          ],
+          "probe_question": null
+        }
+      },
+      "score": {
+        "valid": false,
+        "acceptable": false,
+        "error": "OUTPUT_INVALID",
+        "elapsed_s": 2.453,
+        "output": null
+      }
+    },
+    {
+      "id": "Q14",
+      "task_type": "project",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": true,
+        "reason": "round_limit",
+        "error": null,
+        "elapsed_s": 0.0,
+        "output": null
+      },
+      "score": {
+        "valid": false,
+        "acceptable": false,
+        "error": "OUTPUT_INVALID",
+        "elapsed_s": 3.344,
+        "output": null
+      }
+    },
+    {
+      "id": "Q15",
+      "task_type": "knowledge",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": true,
+        "reason": "no_probe",
+        "error": null,
+        "elapsed_s": 1.64,
+        "output": {
+          "should_probe": false,
+          "purpose": null,
+          "reason": "当前问答已完整覆盖考察点：e0 明确给出“临时不可用设置 2 次退避和总限时”对应按次数与时间预算重试并可退避，“业务拒绝直接提示”对应返回修正提示，“带写入的步骤加唯一操作键”对应带副作用步骤先保证幂等。参考答案要点均已落实，无需追问。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "对临时不可用设置 2 次退避和总限时。业务拒绝直接提示，带写入的步骤加唯一操作键。",
+              "start": 0,
+              "end": 41
+            }
+          ],
+          "probe_question": null
+        }
+      },
+      "score": {
+        "valid": true,
+        "acceptable": false,
+        "error": null,
+        "elapsed_s": 2.391,
+        "output": {
+          "task_type": "knowledge",
+          "rubric_version": "knowledge-v1",
+          "dimensions": {
+            "correctness": {
+              "applicable": true,
+              "value": 2,
+              "reason": "覆盖了退避与总限时、业务拒绝提示、幂等键三个要点，方向正确；但未说明仅对明确暂时故障重试，也未交代材料和 schema 不满足时的修正提示或降级，核心分类与穷尽情形有缺项。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "对临时不可用设置 2 次退避和总限时。业务拒绝直接提示，带写入的步骤加唯一操作键。",
+                  "start": 0,
+                  "end": 41
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "depth": {
+              "applicable": true,
+              "value": 2,
+              "reason": "给出了次数、限时、唯一键等具体做法，但未阐述重试分类依据、重试耗尽后的降级与告警、幂等键如何覆盖重复写入，边界和取舍说明不足。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "对临时不可用设置 2 次退避和总限时。业务拒绝直接提示，带写入的步骤加唯一操作键。",
+                  "start": 0,
+                  "end": 41
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "structure": {
+              "applicable": false,
+              "value": null,
+              "reason": "该维度不适用于本题评分。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "relevance": {
+              "applicable": false,
+              "value": null,
+              "reason": "该维度不适用于本题评分。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            }
+          },
+          "uncertainties": [
+            {
+              "type": "rubric_conflict",
+              "message": "评分维度仅含 correctness 与 depth，但输入说明知识题存在 structure、relevance；后者按不适用处理，未参与评分。"
+            }
+          ],
+          "comment": null,
+          "improvements": []
+        }
+      }
+    },
+    {
+      "id": "Q16",
+      "task_type": "project",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": true,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.203,
+        "output": {
+          "should_probe": true,
+          "purpose": "clarify",
+          "reason": "现有回答只笼统称“在测试库抽查两个问法，没看到旧版本引用”，缺少可核验的观察依据，无法对应本次考察点；追问可补齐“具体抽查了哪两个问法、何谓未看到旧引用”的事实。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "在测试库抽查两个问法，没看到旧版本引用",
+              "start": 9,
+              "end": 28
+            }
+          ],
+          "probe_question": "你抽查的两个问法分别是什么，具体如何判断“没看到旧版本引用”？"
+        }
+      },
+      "score": {
+        "valid": true,
+        "acceptable": true,
+        "error": null,
+        "elapsed_s": 2.516,
+        "output": {
+          "task_type": "project",
+          "rubric_version": "project-v1",
+          "dimensions": {
+            "technical_reasoning": {
+              "applicable": false,
+              "value": null,
+              "reason": "该维度不在适用维度列表中。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "implementation_ownership": {
+              "applicable": false,
+              "value": null,
+              "reason": "该维度不在适用维度列表中。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "validation_evidence": {
+              "applicable": true,
+              "value": 2,
+              "reason": "回答提到在测试库抽查两个问法并未看到旧版本引用，这提供了初步验证证据；但未说明抽查覆盖了哪些文档、版本比对方式，也没有版本差异或日志的具体证据，不能充分支持“旧引用已经失效”的结论。建议补充版本替换记录、旧版文档的访问/检索日志，以及覆盖代表性问法的对照组测试结果。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "在测试库抽查两个问法，没看到旧版本引用",
+                  "start": 9,
+                  "end": 28
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "communication": {
+              "applicable": true,
+              "value": 2,
+              "reason": "回答简洁直接，说明了自己做了什么、观察到什么；但缺少对结论边界的说明（例如抽查范围有限、未做全量验证），表达上也没有区分“未观察到”和“已确认失效”。建议明确说明验证范围与置信边界，再给出结论。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "我把文档换了版本，在测试库抽查两个问法，没看到旧版本引用。",
+                  "start": 0,
+                  "end": 29
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            }
+          },
+          "uncertainties": [
+            {
+              "type": "verification_gap",
+              "message": "无法验证“旧引用已经失效”这一结论是否成立，因为未提供版本替换记录、检索/访问日志或覆盖全部受影响问法的测试结果。"
+            }
+          ],
+          "comment": null,
+          "improvements": []
+        }
+      }
+    },
+    {
+      "id": "Q17",
+      "task_type": "knowledge",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": false,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.485,
+        "output": {
+          "should_probe": true,
+          "purpose": "clarify",
+          "reason": "当前只有一轮问答，回答给出了“先核对方向、难度和审核状态”的原则性顺序，但没有说明“方向不符”具体指什么、以什么为判断依据，也未覆盖参考答案中“无候选时提示”这一分支；追问一个具体问题可澄清判定口径，避免后续理解偏差。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "先核对方向、难度和审核状态，之后才比较相似度。",
+              "start": 4,
+              "end": 27
+            }
+          ],
+          "probe_question": "“方向不符”具体以什么为准来判断？是看题目标注的知识点/方向标签，还是关键词命中？如果核对后没有任何合格候选，你希望系统怎么提示？"
+        }
+      },
+      "score": {
+        "valid": true,
+        "acceptable": true,
+        "error": null,
+        "elapsed_s": 1.89,
+        "output": {
+          "task_type": "knowledge",
+          "rubric_version": "knowledge-v1",
+          "dimensions": {
+            "correctness": {
+              "applicable": true,
+              "value": 3,
+              "reason": "回答明确给出\"不会选\"的结论，并指出应先核对方向、难度和审核状态，再比较相似度，符合\"先按选择、审核状态和难度限定资格，再在合格候选间按相似度排序\"的核心要点。但未提及无候选时如何提示或补取候选，覆盖略欠完整。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "不会选。先核对方向、难度和审核状态，之后才比较相似度。",
+                  "start": 0,
+                  "end": 27
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "depth": {
+              "applicable": false,
+              "value": null,
+              "reason": "该维度不适用于本题 rubric。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "structure": {
+              "applicable": false,
+              "value": null,
+              "reason": "该维度不适用于本题 rubric。",
+              "evidence": [],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            },
+            "relevance": {
+              "applicable": true,
+              "value": 4,
+              "reason": "回答直接针对\"语义相似第一名方向不符该不该选\"，结论明确并给出硬约束优先于相似度的判断依据，与职位要求按方向出题的确认材料一致，切题且无冗余。",
+              "evidence": [
+                {
+                  "exchange_id": "e0",
+                  "quote": "不会选。先核对方向、难度和审核状态，之后才比较相似度。",
+                  "start": 0,
+                  "end": 27
+                }
+              ],
+              "evidence_absence_reason": null,
+              "source_refs": []
+            }
+          },
+          "uncertainties": [],
+          "comment": null,
+          "improvements": []
+        }
+      }
+    },
+    {
+      "id": "Q18",
+      "task_type": "project",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": false,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.344,
+        "output": {
+          "should_probe": true,
+          "purpose": "clarify",
+          "reason": "现有问答仅笼统说明“把回执和重试入口接起来”，未说明该部分的具体实现边界与验证方式；为准确理解其负责范围，需要追问一个具体问题。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "我负责把回执和重试入口接起来。",
+              "start": 0,
+              "end": 15
+            },
+            {
+              "exchange_id": "e0",
+              "quote": "用同一操作 ID 注入一次处理失败，再恢复，确认只保留一份结果。",
+              "start": 15,
+              "end": 47
+            }
+          ],
+          "probe_question": "你提到“把回执和重试入口接起来”，能否具体说明回执由哪个模块产生、重试入口在 CLI 侧如何触发，以及“确认只保留一份结果”是通过什么机制保证的？"
+        }
+      },
+      "score": {
+        "valid": false,
+        "acceptable": false,
+        "error": "OUTPUT_INVALID",
+        "elapsed_s": 2.0,
+        "output": null
+      }
+    },
+    {
+      "id": "Q19",
+      "task_type": "knowledge",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": false,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.406,
+        "output": {
+          "should_probe": true,
+          "purpose": "clarify",
+          "reason": "回答仅提到'先找时间更早，再找同时间但 ID 更小'，但未说明比较边界是严格小于（独占）而非小于等于，也未说明排序方向一致，这关系到是否会重复或漏行，需澄清。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "按这两个字段倒序，下一页先找时间更早，再找同时间但 ID 更小。",
+              "start": 11,
+              "end": 43
+            }
+          ],
+          "probe_question": "你提到下一页先找时间更早、再找同时间但 ID 更小，这里条件是否应写成时间小于上一页最后时间、或时间相等且 ID 严格小于上一页最后 ID（而不是小于等于）？"
+        }
+      },
+      "score": {
+        "valid": false,
+        "acceptable": false,
+        "error": "OUTPUT_INVALID",
+        "elapsed_s": 2.922,
+        "output": null
+      }
+    },
+    {
+      "id": "Q20",
+      "task_type": "project",
+      "stop": null,
+      "probe": {
+        "valid": true,
+        "acceptable": false,
+        "reason": "probe",
+        "error": null,
+        "elapsed_s": 1.625,
+        "output": {
+          "should_probe": true,
+          "purpose": "deepen",
+          "reason": "答主只说明“注入写入错误，再查修订号和旧记录，看到两项都保持原值”，未交代如何具体注入错误、如何查询修订号和旧记录、是否在独立连接或事务外检查，也未说明是否比对回滚后的完整用户状态。追问一个具体问题可明确验证方法，避免仅凭概括性回答判断。",
+          "evidence_refs": [
+            {
+              "exchange_id": "e0",
+              "quote": "我注入写入错误，再查修订号和旧记录，看到两项都保持原值。",
+              "start": 0,
+              "end": 28
+            }
+          ],
+          "probe_question": "你具体如何“注入写入错误”，以及在什么连接或事务边界上“查修订号和旧记录”来确认它们保持原值？"
+        }
+      },
+      "score": {
+        "valid": false,
+        "acceptable": false,
+        "error": "OUTPUT_INVALID",
+        "elapsed_s": 3.453,
+        "output": null
+      }
+    }
+  ],
+  "stop": null,
+  "metrics": {
+    "probe_valid": 10,
+    "probe_acceptable": 6,
+    "score_valid": 5,
+    "score_acceptable": 4
+  },
+  "ledger": {
+    "hard_limit_nanos": 120000000,
+    "spent_nanos": 16858500,
+    "reserved_nanos": 0
+  },
+  "attempts": [
+    {
+      "step_key": "Q01-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2389,
+      "reserved_nanos": 2156700,
+      "actual_input_tokens": 566,
+      "actual_output_tokens": 59,
+      "actual_nanos": 240600
+    },
+    {
+      "step_key": "Q01-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2465,
+      "reserved_nanos": 2179500,
+      "actual_input_tokens": 532,
+      "actual_output_tokens": 295,
+      "actual_nanos": 513600
+    },
+    {
+      "step_key": "Q02-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2623,
+      "reserved_nanos": 2226900,
+      "actual_input_tokens": 595,
+      "actual_output_tokens": 82,
+      "actual_nanos": 276900
+    },
+    {
+      "step_key": "Q02-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2752,
+      "reserved_nanos": 2265600,
+      "actual_input_tokens": 577,
+      "actual_output_tokens": 333,
+      "actual_nanos": 572700
+    },
+    {
+      "step_key": "Q03-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2212,
+      "reserved_nanos": 2103600,
+      "actual_input_tokens": 527,
+      "actual_output_tokens": 154,
+      "actual_nanos": 342900
+    },
+    {
+      "step_key": "Q03-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2379,
+      "reserved_nanos": 2153700,
+      "actual_input_tokens": 516,
+      "actual_output_tokens": 180,
+      "actual_nanos": 370800
+    },
+    {
+      "step_key": "Q04-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2296,
+      "reserved_nanos": 2128800,
+      "actual_input_tokens": 566,
+      "actual_output_tokens": 151,
+      "actual_nanos": 351000
+    },
+    {
+      "step_key": "Q04-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2438,
+      "reserved_nanos": 2171400,
+      "actual_input_tokens": 544,
+      "actual_output_tokens": 222,
+      "actual_nanos": 429600
+    },
+    {
+      "step_key": "Q05-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2173,
+      "reserved_nanos": 2091900,
+      "actual_input_tokens": 517,
+      "actual_output_tokens": 108,
+      "actual_nanos": 284700
+    },
+    {
+      "step_key": "Q05-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2267,
+      "reserved_nanos": 2120100,
+      "actual_input_tokens": 483,
+      "actual_output_tokens": 279,
+      "actual_nanos": 479700
+    },
+    {
+      "step_key": "Q06-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2047,
+      "reserved_nanos": 2054100,
+      "actual_input_tokens": 490,
+      "actual_output_tokens": 130,
+      "actual_nanos": 303000
+    },
+    {
+      "step_key": "Q06-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1977,
+      "reserved_nanos": 2033100,
+      "actual_input_tokens": 425,
+      "actual_output_tokens": 507,
+      "actual_nanos": 735900
+    },
+    {
+      "step_key": "Q07-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2053,
+      "reserved_nanos": 2055900,
+      "actual_input_tokens": 492,
+      "actual_output_tokens": 148,
+      "actual_nanos": 325200
+    },
+    {
+      "step_key": "Q07-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1971,
+      "reserved_nanos": 2031300,
+      "actual_input_tokens": 421,
+      "actual_output_tokens": 388,
+      "actual_nanos": 591900
+    },
+    {
+      "step_key": "Q08-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2005,
+      "reserved_nanos": 2041500,
+      "actual_input_tokens": 478,
+      "actual_output_tokens": 135,
+      "actual_nanos": 305400
+    },
+    {
+      "step_key": "Q08-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1938,
+      "reserved_nanos": 2021400,
+      "actual_input_tokens": 412,
+      "actual_output_tokens": 327,
+      "actual_nanos": 516000
+    },
+    {
+      "step_key": "Q09-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2229,
+      "reserved_nanos": 2108700,
+      "actual_input_tokens": 535,
+      "actual_output_tokens": 146,
+      "actual_nanos": 335700
+    },
+    {
+      "step_key": "Q09-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2300,
+      "reserved_nanos": 2130000,
+      "actual_input_tokens": 501,
+      "actual_output_tokens": 317,
+      "actual_nanos": 530700
+    },
+    {
+      "step_key": "Q10-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2003,
+      "reserved_nanos": 2040900,
+      "actual_input_tokens": 486,
+      "actual_output_tokens": 103,
+      "actual_nanos": 269400
+    },
+    {
+      "step_key": "Q10-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1947,
+      "reserved_nanos": 2024100,
+      "actual_input_tokens": 425,
+      "actual_output_tokens": 335,
+      "actual_nanos": 529500
+    },
+    {
+      "step_key": "Q11-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2154,
+      "reserved_nanos": 2086200,
+      "actual_input_tokens": 518,
+      "actual_output_tokens": 154,
+      "actual_nanos": 340200
+    },
+    {
+      "step_key": "Q11-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2218,
+      "reserved_nanos": 2105400,
+      "actual_input_tokens": 481,
+      "actual_output_tokens": 279,
+      "actual_nanos": 479100
+    },
+    {
+      "step_key": "Q12-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2008,
+      "reserved_nanos": 2042400,
+      "actual_input_tokens": 479,
+      "actual_output_tokens": 141,
+      "actual_nanos": 312900
+    },
+    {
+      "step_key": "Q12-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1945,
+      "reserved_nanos": 2023500,
+      "actual_input_tokens": 416,
+      "actual_output_tokens": 329,
+      "actual_nanos": 519600
+    },
+    {
+      "step_key": "Q13-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2196,
+      "reserved_nanos": 2098800,
+      "actual_input_tokens": 535,
+      "actual_output_tokens": 95,
+      "actual_nanos": 274500
+    },
+    {
+      "step_key": "Q13-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2242,
+      "reserved_nanos": 2112600,
+      "actual_input_tokens": 488,
+      "actual_output_tokens": 352,
+      "actual_nanos": 568800
+    },
+    {
+      "step_key": "Q14-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2192,
+      "reserved_nanos": 2097600,
+      "actual_input_tokens": 488,
+      "actual_output_tokens": 575,
+      "actual_nanos": 836400
+    },
+    {
+      "step_key": "Q15-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2192,
+      "reserved_nanos": 2097600,
+      "actual_input_tokens": 534,
+      "actual_output_tokens": 144,
+      "actual_nanos": 333000
+    },
+    {
+      "step_key": "Q15-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2270,
+      "reserved_nanos": 2121000,
+      "actual_input_tokens": 501,
+      "actual_output_tokens": 334,
+      "actual_nanos": 551100
+    },
+    {
+      "step_key": "Q16-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2002,
+      "reserved_nanos": 2040600,
+      "actual_input_tokens": 484,
+      "actual_output_tokens": 136,
+      "actual_nanos": 308400
+    },
+    {
+      "step_key": "Q16-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1930,
+      "reserved_nanos": 2019000,
+      "actual_input_tokens": 418,
+      "actual_output_tokens": 350,
+      "actual_nanos": 545400
+    },
+    {
+      "step_key": "Q17-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2163,
+      "reserved_nanos": 2088900,
+      "actual_input_tokens": 515,
+      "actual_output_tokens": 154,
+      "actual_nanos": 339300
+    },
+    {
+      "step_key": "Q17-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2244,
+      "reserved_nanos": 2113200,
+      "actual_input_tokens": 492,
+      "actual_output_tokens": 283,
+      "actual_nanos": 487200
+    },
+    {
+      "step_key": "Q18-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2078,
+      "reserved_nanos": 2063400,
+      "actual_input_tokens": 502,
+      "actual_output_tokens": 165,
+      "actual_nanos": 348600
+    },
+    {
+      "step_key": "Q18-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2032,
+      "reserved_nanos": 2049600,
+      "actual_input_tokens": 440,
+      "actual_output_tokens": 285,
+      "actual_nanos": 474000
+    },
+    {
+      "step_key": "Q19-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2246,
+      "reserved_nanos": 2113800,
+      "actual_input_tokens": 539,
+      "actual_output_tokens": 162,
+      "actual_nanos": 356100
+    },
+    {
+      "step_key": "Q19-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 2278,
+      "reserved_nanos": 2123400,
+      "actual_input_tokens": 498,
+      "actual_output_tokens": 283,
+      "actual_nanos": 489000
+    },
+    {
+      "step_key": "Q20-decide_follow_up",
+      "status": "settled",
+      "estimated_input_tokens": 2071,
+      "reserved_nanos": 2061300,
+      "actual_input_tokens": 499,
+      "actual_output_tokens": 167,
+      "actual_nanos": 350100
+    },
+    {
+      "step_key": "Q20-evaluate_answer",
+      "status": "settled",
+      "estimated_input_tokens": 1980,
+      "reserved_nanos": 2034000,
+      "actual_input_tokens": 432,
+      "actual_output_tokens": 425,
+      "actual_nanos": 639600
+    }
+  ]
+}
