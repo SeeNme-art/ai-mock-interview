@@ -105,10 +105,11 @@ def read_state(path: Path, session_id: str) -> dict:
         version = check_business_schema(db)
         session = find_session(db, session_id)
         operation = current = None
-        if version >= 3:
+        if version >= 2:
             operation = db.execute("""SELECT id AS operation_id,kind,status,error_code,result_refs_json FROM operation
-                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer','evaluate_answer','advance')
+                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer','evaluate_answer','advance','finalize')
                          ORDER BY expected_epoch DESC LIMIT 1""", (session_id, OWNER_ID)).fetchone()
+        if version >= 3:
             current = db.execute("""SELECT t.id AS turn_id,e.id AS exchange_id,p.seq,e.round_no,t.state,e.question_text AS question,
                                   t.task_type,t.dimension,t.difficulty,t.fallback_reason,e.answer_text AS answer,e.answered_at
                                   FROM turn t JOIN plan_item p ON p.id=t.plan_item_id
@@ -127,6 +128,8 @@ def read_state(path: Path, session_id: str) -> dict:
                 operation_view["decision_reason"] = refs["decision_reason"]
             if operation_view["kind"] == "evaluate_answer":
                 operation_view["evaluation_status"] = refs.get("evaluation_status", "pending")
+            if operation_view["kind"] == "finalize" and "evaluation_status" in refs:
+                operation_view["evaluation_status"] = refs["evaluation_status"]
             if operation_view["kind"] == "advance" and "outcome" in refs:
                 operation_view["outcome"] = refs["outcome"]
                 operation_view["unavailable"] = refs["unavailable"]

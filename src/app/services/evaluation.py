@@ -51,6 +51,10 @@ def _context(db: sqlite3.Connection, session_id: str, answer_operation: sqlite3.
             or [row.round_no for row in exchanges] != list(range(turn["probe_count"] + 1))
             or any(not row.answer or not row.answer.strip() for row in exchanges)):
         raise SessionError("ILLEGAL_ACTION", "评分需要匹配本题的完整已提交问答")
+    return evaluation_context(turn, exchanges)
+
+
+def evaluation_context(turn: sqlite3.Row, exchanges: tuple[ExchangeRecord, ...]) -> EvaluationContext:
     return EvaluationContext(turn["id"], turn["plan_item_id"], turn["task_type"], exchanges,
                              turn["question_snapshot_json"], turn["rubric_snapshot_json"], turn["source_snapshot_json"])
 
@@ -118,9 +122,7 @@ def _load_work(db: sqlite3.Connection, session_id: str, operation_id: str, epoch
     return context, {"turn_id": context.turn_id, "evaluation_id": request["evaluation_id"]}
 
 
-def _score(context: EvaluationContext, evaluator: DemoEvaluator | None) -> tuple[ScoredAssessment | None, str | None]:
-    if evaluator is None:
-        raise SessionError("CONFIGURATION_ERROR", "本批需显式提供本地评分样例")
+def score_context(context: EvaluationContext, evaluator: DemoEvaluator) -> tuple[ScoredAssessment | None, str | None]:
     rubric = json.loads(context.rubric_snapshot)
     answers = {item.id: item.answer for item in context.exchanges if item.answer is not None}
     source_ids = {source["id"] for source in json.loads(context.source_snapshot)}
@@ -137,13 +139,31 @@ def _score(context: EvaluationContext, evaluator: DemoEvaluator | None) -> tuple
     return result, None
 
 
+def store_evaluation(db: sqlite3.Connection, context: EvaluationContext, evaluation_id: str,
+                     result: ScoredAssessment | None, error_code: str | None, now: str, *,
+                     evaluator_version: str | None = "local-demo-v1") -> tuple[str, str]:
+    question = json.loads(context.question_snapshot)
+    rubric = json.loads(context.rubric_snapshot)
+    version_context = canonical_json({"evaluator": evaluator_version, "rubric_version": rubric["rubric_version"],
+                                      "question_id": question.get("id"), "question_revision": question.get("revision")})
+    status = "ready" if result is not None else "failed"
+    normalized = canonical_json(result.assessment.model_dump(mode="json")) if result is not None else None
+    db.execute("""UPDATE evaluation SET status=?,assessment_json=?,item_score=?,error_code=?,model_context_json=?,updated_at=?
+                  WHERE id=? AND turn_id=? AND status='pending'""",
+               (status, normalized, result.item_score if result is not None else None, error_code,
+                version_context, now, evaluation_id, context.turn_id))
+    return status, version_context
+
+
 def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: int, evaluator: DemoEvaluator | None) -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
         context, refs = _load_work(db, session_id, operation_id, epoch)
     if context is None:
         return {"turn_id": refs["turn_id"], "evaluation_id": refs["evaluation_id"]}
-    result, error_code = _score(context, evaluator)
+    if evaluator is None:
+        raise SessionError("CONFIGURATION_ERROR", "本批需显式提供本地评分样例")
+    result, error_code = score_context(context, evaluator)
 
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
@@ -154,16 +174,9 @@ def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: in
             raise SessionError("ILLEGAL_ACTION", "评分依据已更新，请读取当前进度")
         now = datetime.now(UTC).isoformat()
         question = json.loads(context.question_snapshot)
-        rubric = json.loads(context.rubric_snapshot)
-        version_context = canonical_json({"evaluator": "local-demo-v1", "rubric_version": rubric["rubric_version"],
-                                          "question_id": question.get("id"), "question_revision": question.get("revision")})
-        eval_status, op_status = ("ready", "succeeded") if result is not None else ("failed", "failed")
-        normalized = canonical_json(result.assessment.model_dump(mode="json")) if result is not None else None
+        eval_status, version_context = store_evaluation(db, context, refs["evaluation_id"], result, error_code, now)
+        op_status = "succeeded" if result is not None else "failed"
         refs_json = canonical_json({**refs, "evaluation_status": eval_status})
-        db.execute("""UPDATE evaluation SET status=?,assessment_json=?,item_score=?,error_code=?,model_context_json=?,updated_at=?
-                      WHERE id=? AND status='pending'""",
-                   (eval_status, normalized, result.item_score if result is not None else None, error_code,
-                    version_context, now, refs["evaluation_id"]))
         db.execute("UPDATE turn SET state='closed',closed_at=? WHERE id=?", (now, context.turn_id))
         db.execute("UPDATE plan_item SET status='closed',outcome='answered' WHERE id=?", (context.plan_item_id,))
         finish_if_all_closed(db, session_id, question["plan_version"], now)

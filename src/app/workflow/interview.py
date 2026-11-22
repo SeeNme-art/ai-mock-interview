@@ -10,8 +10,10 @@ from langsmith import tracing_context
 from app.db.business import operation_epoch
 from app.services.advancement import ADVANCE, STEP as ADVANCE_STEP, advance_plan
 from app.services.evaluation import EVALUATE, DemoEvaluator, process_evaluation
+from app.services.finalization import FINALIZE, finalize_interview
 from app.services.first_question import prepare_first_question, start_epoch
 from app.services.probing import DemoProposer, process_answer
+from app.services.reports import generate_report
 
 
 class InterviewState(TypedDict, total=False):
@@ -20,10 +22,11 @@ class InterviewState(TypedDict, total=False):
     control_epoch: int
     turn_id: str | None
     exchange_id: str | None
-    evaluation_id: str
+    evaluation_id: str | None
 
 
-def _run_interview(path: Path, initial: InterviewState, command: Literal["start", "answer", "evaluate_answer", "advance"], *,
+def _run_interview(path: Path, initial: InterviewState,
+                   command: Literal["start", "answer", "evaluate_answer", "advance", "finalize"], *,
                    bank: Path | None = None, proposer: DemoProposer | None = None,
                    evaluator: DemoEvaluator | None = None) -> InterviewState:
     def prepare(state: InterviewState) -> dict:
@@ -42,18 +45,23 @@ def _run_interview(path: Path, initial: InterviewState, command: Literal["start"
             raise RuntimeError("推进节点缺少审核题库配置")
         return advance_plan(path, bank, state["session_id"], state["operation_id"], state["control_epoch"])
 
+    def finalize(state: InterviewState) -> dict:
+        return finalize_interview(path, state["session_id"], state["operation_id"], state["control_epoch"], evaluator)
+
     builder = StateGraph(InterviewState)
     builder.add_node("prepare_first_question", prepare)
     builder.add_node("decide_follow_up", decide)
     builder.add_node(EVALUATE, evaluate)
     builder.add_node(ADVANCE_STEP, advance)
+    builder.add_node(FINALIZE, finalize)
     builder.add_conditional_edges(START, lambda _: command,
                                   {"start": "prepare_first_question", "answer": "decide_follow_up",
-                                   EVALUATE: EVALUATE, ADVANCE: ADVANCE_STEP})
+                                   EVALUATE: EVALUATE, ADVANCE: ADVANCE_STEP, FINALIZE: FINALIZE})
     builder.add_edge("prepare_first_question", END)
     builder.add_edge("decide_follow_up", END)
     builder.add_edge(EVALUATE, END)
     builder.add_edge(ADVANCE_STEP, END)
+    builder.add_edge(FINALIZE, END)
     with tracing_context(enabled=False):
         return builder.compile().invoke(initial)
 
@@ -80,3 +88,11 @@ def run_advance(path: Path, bank: Path, session_id: str, operation_id: str) -> I
     initial = {"session_id": session_id, "operation_id": operation_id,
                "control_epoch": operation_epoch(path, session_id, operation_id, ADVANCE)}
     return _run_interview(path, initial, ADVANCE, bank=bank)
+
+
+def run_finalize(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None) -> InterviewState:
+    initial = {"session_id": session_id, "operation_id": operation_id,
+               "control_epoch": operation_epoch(path, session_id, operation_id, FINALIZE)}
+    result = _run_interview(path, initial, FINALIZE, evaluator=evaluator)
+    generate_report(path, session_id)
+    return result

@@ -13,6 +13,7 @@ from app.db.business import SessionError
 from app.services.advancement import accept_advance
 from app.services.answers import MAX_ANSWER_CHARS, accept_answer
 from app.services.evaluation import accept_evaluation
+from app.services.finalization import ABORT_REASONS, accept_abort
 from app.services.first_question import accept_start, read_state
 from app.services.reports import generate_report, read_report
 
@@ -88,6 +89,16 @@ def main() -> int:
     report = actions.add_parser("report", help="read a saved report without generating it")
     report.add_argument("session_id")
     report.add_argument("--revision", type=int)
+    abort = actions.add_parser("abort", help="end an interview and finalize any saved answer")
+    abort.add_argument("session_id")
+    abort.add_argument("--expected-revision", required=True, type=int)
+    abort.add_argument("--key", required=True)
+    abort.add_argument("--reason", required=True, choices=ABORT_REASONS)
+    abort.add_argument("--demo-assessment-file", type=Path)
+    resume_finalize = actions.add_parser("resume-finalize", help="resume finalization or retry saving its report")
+    resume_finalize.add_argument("session_id")
+    resume_finalize.add_argument("operation_id")
+    resume_finalize.add_argument("--demo-assessment-file", type=Path)
     args = parser.parse_args()
     try:
         if args.action == "answer":
@@ -100,7 +111,7 @@ def main() -> int:
         elif args.action == "report":
             result = read_report(args.db, args.session_id, args.revision)
         else:
-            from app.workflow.interview import run_advance, run_answer, run_evaluation, run_first_question
+            from app.workflow.interview import run_advance, run_answer, run_evaluation, run_finalize, run_first_question
 
             if args.action == "start":
                 operation_id, accepted = accept_start(args.db, args.session_id, args.expected_revision, args.key)
@@ -122,9 +133,17 @@ def main() -> int:
                                                            args.expected_revision, args.key)
                 if accepted:
                     run_evaluation(args.db, args.session_id, operation_id, lambda _: read_demo_json(args.demo_assessment_file))
-            else:
+            elif args.action == "resume-score":
                 evaluator = (lambda _: read_demo_json(args.demo_assessment_file)) if args.demo_assessment_file is not None else None
                 run_evaluation(args.db, args.session_id, args.operation_id, evaluator)
+            else:
+                evaluator = (lambda _: read_demo_json(args.demo_assessment_file)) if args.demo_assessment_file is not None else None
+                if args.action == "abort":
+                    operation_id, accepted = accept_abort(args.db, args.session_id, args.expected_revision, args.key, args.reason)
+                    if accepted:
+                        run_finalize(args.db, args.session_id, operation_id, evaluator)
+                else:
+                    run_finalize(args.db, args.session_id, args.operation_id, evaluator)
             result = read_state(args.db, args.session_id)
     except ModuleNotFoundError as exc:
         if exc.name not in {"langgraph", "langsmith"}:

@@ -96,7 +96,7 @@ def operation_epoch(path: Path, session_id: str, operation_id: str, kind: str) -
         db.execute("BEGIN")
         version = check_business_schema(db)
         find_session(db, session_id)
-        if version < 3:
+        if version < 2:
             raise SessionError("RESOURCE_NOT_FOUND", "找不到该会话的操作")
         return find_operation(db, session_id, operation_id, kind)["expected_epoch"]
 
