@@ -1,0 +1,412 @@
+{
+  "split": "debug",
+  "datasets": {
+    "core": {
+      "version": "m4-eval-v1",
+      "sha256": "c2e465da6b06862d3f3aa75bc3a1a9bf6363c7783f329e89b3421b3df4fde808"
+    },
+    "retrieval": {
+      "version": "m4-eval-v1",
+      "sha256": "48ae1d0245918afe4a15b6f56ca7e8cf6e94a717713d044dc279b58162f1ac34"
+    },
+    "materials": {
+      "version": "m4-eval-v1",
+      "sha256": "ecb8a0933bdaa16fd775116b3b3d8912bca76c30de4e6c689ef595385d8a3e08"
+    }
+  },
+  "sample_counts": {
+    "core": 20,
+    "retrieval": 30,
+    "materials": 10
+  },
+  "core": {
+    "selected": 10,
+    "status": "labels_checked_only"
+  },
+  "materials": {
+    "passing": 5,
+    "samples": 5,
+    "cases": [
+      {
+        "id": "M01",
+        "format": "text",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M02",
+        "format": "docx",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M03",
+        "format": "docx",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M04",
+        "format": "pdf",
+        "columns": 1,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      },
+      {
+        "id": "M05",
+        "format": "pdf",
+        "columns": 2,
+        "passed": true,
+        "missing_snippets": [],
+        "error": null
+      }
+    ]
+  },
+  "retrieval": {
+    "embedding_model": "BAAI/bge-small-zh-v1.5@46fbe35fd4374a00fee7de77dfddaeb6dd6a2c59/fastembed-0.9.1/onnxruntime-1.32.0/tokenizers-0.23.3",
+    "index_sha256": "b9b0091539ee05bd873e7c0bcc175a718e5fe98291b4dec700c9c16d8a773abd",
+    "seed_sha256": "3cb565d0b2acce5b4b80f6b90c7f9f817bbb63fff216d54f0a76688ebd6818f8",
+    "query_version": "objective-jd-skills-v1",
+    "comparison": {
+      "sqlite": {
+        "positives": 13,
+        "hit_at_3": 0.8461538461538461,
+        "recall_at_3": 0.7307692307692307,
+        "mrr_at_3": 0.5897435897435896,
+        "no_candidate_samples": 2,
+        "no_candidate_correct": 2
+      },
+      "faiss": {
+        "positives": 13,
+        "hit_at_3": 1.0,
+        "recall_at_3": 0.9230769230769231,
+        "mrr_at_3": 0.9230769230769231,
+        "no_candidate_samples": 2,
+        "no_candidate_correct": 2
+      }
+    },
+    "directions": {
+      "agent": {
+        "sqlite": {
+          "positives": 5,
+          "hit_at_3": 0.6,
+          "recall_at_3": 0.6,
+          "mrr_at_3": 0.5,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        },
+        "faiss": {
+          "positives": 5,
+          "hit_at_3": 1.0,
+          "recall_at_3": 1.0,
+          "mrr_at_3": 1.0,
+          "no_candidate_samples": 0,
+          "no_candidate_correct": 0
+        }
+      },
+      "rag": {
+        "sqlite": {
+          "positives": 4,
+          "hit_at_3": 1.0,
+          "recall_at_3": 0.875,
+          "mrr_at_3": 0.7083333333333334,
+          "no_candidate_samples": 1,
+          "no_candidate_correct": 1
+        },
+        "faiss": {
+          "positives": 4,
+          "hit_at_3": 1.0,
+          "recall_at_3": 0.875,
+          "mrr_at_3": 0.875,
+          "no_candidate_samples": 1,
+          "no_candidate_correct": 1
+        }
+      },
+      "backend": {
+        "sqlite": {
+          "positives": 4,
+          "hit_at_3": 1.0,
+          "recall_at_3": 0.75,
+          "mrr_at_3": 0.5833333333333334,
+          "no_candidate_samples": 1,
+          "no_candidate_correct": 1
+        },
+        "faiss": {
+          "positives": 4,
+          "hit_at_3": 1.0,
+          "recall_at_3": 0.875,
+          "mrr_at_3": 0.875,
+          "no_candidate_samples": 1,
+          "no_candidate_correct": 1
+        }
+      }
+    },
+    "cases": [
+      {
+        "id": "R01",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-workflow-boundary",
+          "agent-tool-executor"
+        ],
+        "sqlite": [
+          "agent-workflow-boundary",
+          "agent-json-schema",
+          "agent-tool-executor"
+        ],
+        "faiss": [
+          "agent-workflow-boundary",
+          "agent-tool-executor",
+          "agent-json-schema"
+        ]
+      },
+      {
+        "id": "R02",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-json-schema",
+          "agent-tool-executor"
+        ],
+        "sqlite": [
+          "agent-workflow-boundary",
+          "agent-json-schema",
+          "agent-tool-executor"
+        ],
+        "faiss": [
+          "agent-tool-executor",
+          "agent-json-schema",
+          "agent-workflow-boundary"
+        ]
+      },
+      {
+        "id": "R03",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-thread-isolation"
+        ],
+        "sqlite": [
+          "agent-workflow-boundary",
+          "agent-json-schema",
+          "agent-tool-executor"
+        ],
+        "faiss": [
+          "agent-thread-isolation",
+          "agent-workflow-boundary",
+          "agent-json-schema"
+        ]
+      },
+      {
+        "id": "R04",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-interrupt-replay"
+        ],
+        "sqlite": [
+          "agent-interrupt-replay",
+          "agent-retry-policy",
+          "agent-tool-schema-mismatch"
+        ],
+        "faiss": [
+          "agent-interrupt-replay",
+          "agent-retry-policy",
+          "agent-tool-time-budget"
+        ]
+      },
+      {
+        "id": "R05",
+        "direction": "agent",
+        "candidates": 5,
+        "relevant_ids": [
+          "agent-parallel-join"
+        ],
+        "sqlite": [
+          "agent-interrupt-replay",
+          "agent-retry-policy",
+          "agent-tool-schema-mismatch"
+        ],
+        "faiss": [
+          "agent-parallel-join",
+          "agent-tool-schema-mismatch",
+          "agent-interrupt-replay"
+        ]
+      },
+      {
+        "id": "R06",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-top-k",
+          "rag-recall-at-k"
+        ],
+        "sqlite": [
+          "rag-cosine-faiss",
+          "rag-top-k",
+          "rag-recall-at-k"
+        ],
+        "faiss": [
+          "rag-top-k",
+          "rag-recall-at-k",
+          "rag-hard-filter"
+        ]
+      },
+      {
+        "id": "R07",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-index-rebuild",
+          "rag-cosine-faiss"
+        ],
+        "sqlite": [
+          "rag-cosine-faiss",
+          "rag-top-k",
+          "rag-recall-at-k"
+        ],
+        "faiss": [
+          "rag-cosine-faiss",
+          "rag-index-rebuild",
+          "rag-top-k"
+        ]
+      },
+      {
+        "id": "R08",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-failure-attribution",
+          "rag-chunk-boundary"
+        ],
+        "sqlite": [
+          "rag-chunk-boundary",
+          "rag-failure-attribution",
+          "rag-rrf"
+        ],
+        "faiss": [
+          "rag-empty-gold",
+          "rag-chunk-boundary",
+          "rag-document-updates"
+        ]
+      },
+      {
+        "id": "R09",
+        "direction": "rag",
+        "candidates": 5,
+        "relevant_ids": [
+          "rag-rrf"
+        ],
+        "sqlite": [
+          "rag-chunk-boundary",
+          "rag-failure-attribution",
+          "rag-rrf"
+        ],
+        "faiss": [
+          "rag-rrf",
+          "rag-chunk-boundary",
+          "rag-empty-gold"
+        ]
+      },
+      {
+        "id": "R10",
+        "direction": "rag",
+        "candidates": 0,
+        "relevant_ids": [],
+        "sqlite": [],
+        "faiss": []
+      },
+      {
+        "id": "R11",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-response-filter",
+          "backend-pydantic-strict"
+        ],
+        "sqlite": [
+          "backend-sqlite-context",
+          "backend-pydantic-strict",
+          "backend-http-idempotent"
+        ],
+        "faiss": [
+          "backend-response-filter",
+          "backend-sqlite-context",
+          "backend-http-idempotent"
+        ]
+      },
+      {
+        "id": "R12",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-sql-parameters",
+          "backend-sqlite-context"
+        ],
+        "sqlite": [
+          "backend-sqlite-context",
+          "backend-pydantic-strict",
+          "backend-http-idempotent"
+        ],
+        "faiss": [
+          "backend-sql-parameters",
+          "backend-http-idempotent",
+          "backend-sqlite-context"
+        ]
+      },
+      {
+        "id": "R13",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-wal-writer"
+        ],
+        "sqlite": [
+          "backend-fastapi-blocking-io",
+          "backend-wal-writer",
+          "backend-stale-write"
+        ],
+        "faiss": [
+          "backend-wal-writer",
+          "backend-unique-request",
+          "backend-stale-write"
+        ]
+      },
+      {
+        "id": "R14",
+        "direction": "backend",
+        "candidates": 5,
+        "relevant_ids": [
+          "backend-stale-write"
+        ],
+        "sqlite": [
+          "backend-fastapi-blocking-io",
+          "backend-wal-writer",
+          "backend-stale-write"
+        ],
+        "faiss": [
+          "backend-unique-request",
+          "backend-stale-write",
+          "backend-wal-writer"
+        ]
+      },
+      {
+        "id": "R15",
+        "direction": "backend",
+        "candidates": 0,
+        "relevant_ids": [],
+        "sqlite": [],
+        "faiss": []
+      }
+    ]
+  },
+  "paid_model_calls": 0
+}

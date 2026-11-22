@@ -202,7 +202,10 @@ class AdvancementTests(unittest.TestCase):
             self.close_current()
             if seq < 3:
                 self.advance(f"active-{seq}")
-        self.retire([slots[3]["question_id"]])
+        target = slots[3]
+        self.retire([question.id for question in self.seed.questions
+                     if question.status == "verified" and question.id != actual
+                     and question.dimension == target["dimension"] and question.difficulty == target["difficulty"]])
         self.advance("no-reuse")
         self.assertEqual(self.state()["current"]["seq"], 5)
         self.assertEqual(self.state()["operation"]["unavailable"], [{"seq": 4, "reason_code": "QUESTION_UNAVAILABLE"}])

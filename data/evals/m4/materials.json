@@ -1,0 +1,16 @@
+{
+  "version": "m4-eval-v1",
+  "source": "repository-authored synthetic scenarios and manual labels",
+  "cases": [
+    {"id":"M01","split":"debug","format":"text","family":"校园问答","columns":[["岗位描述：维护 FAQ 管线","技能：FAISS、Python","项目名称：校园问答","项目做法：重建出入馆资料索引","项目结果：核对 32 条问法"]],"expected_snippets":["项目做法：重建出入馆资料索引","项目结果：核对 32 条问法"]},
+    {"id":"M02","split":"debug","format":"docx","family":"活动平台","columns":[["岗位描述：开发活动报名后端","技能：FastAPI、SQLite","项目名称：活动平台","项目做法：增加重复报名检查","项目结果：保留 18 组冲突用例"]],"expected_snippets":["项目名称：活动平台","项目结果：保留 18 组冲突用例"]},
+    {"id":"M03","split":"debug","format":"docx","family":"天气看板","columns":[["项目名称：天气看板","项目做法：截断定时请求等待","项目结果：将脚本限时设为 2 秒","项目名称：短信提醒","项目做法：增加发送回执"]],"expected_snippets":["项目名称：天气看板","项目结果：将脚本限时设为 2 秒","项目名称：短信提醒"]},
+    {"id":"M04","split":"debug","format":"pdf","family":"club-directory","columns":[["Role: junior backend developer","Project: Club Directory","Action: kept cached profiles local","Validation: checked 16 responses"]],"expected_snippets":["Project: Club Directory","Validation: checked 16 responses"]},
+    {"id":"M05","split":"debug","format":"pdf","family":"menu-search","columns":[["Project: Menu Search","Action: built hybrid ranking"],["Measure: 21 fixed queries","Review: two result lists"]],"expected_snippets":["Action: built hybrid ranking","Measure: 21 fixed queries"]},
+    {"id":"M06","split":"holdout","format":"text","family":"公交站查询","columns":[["岗位描述：支持导览资料的检索","技能：Python、向量检索","项目名称：公交站查询","项目做法：为换乘站点补充别名","项目结果：抽查 14 项"]],"expected_snippets":["项目名称：公交站查询","项目结果：抽查 14 项"]},
+    {"id":"M07","split":"holdout","format":"text","family":"本地课程表","columns":[["岗位描述：开发本地时间安排应用","技能：SQLite、事务","项目名称：本地课程表","项目做法：为改课操作增加回滚","项目结果：在 9 组旧记录上验证"]],"expected_snippets":["项目做法：为改课操作增加回滚","项目结果：在 9 组旧记录上验证"]},
+    {"id":"M08","split":"holdout","format":"docx","family":"失物登记","columns":[["岗位描述：实现失物登记助手","技能：工具调用","项目名称：失物登记","项目做法：对登记结果核对物品编号","项目结果：补了 13 条手工校验"]],"expected_snippets":["项目名称：失物登记","项目结果：补了 13 条手工校验"]},
+    {"id":"M09","split":"holdout","format":"pdf","family":"archive-reader","columns":[["Role: records engineer","Project: Archive Reader","Action: partitioned article revisions","Validation: replayed 29 lookups"]],"expected_snippets":["Project: Archive Reader","Validation: replayed 29 lookups"]},
+    {"id":"M10","split":"holdout","format":"pdf","family":"queue-dashboard","columns":[["Project: Queue Dashboard","Action: retained task IDs"],["Measure: 17 response samples","Review: checked retry results"]],"expected_snippets":["Action: retained task IDs","Measure: 17 response samples"]}
+  ]
+}

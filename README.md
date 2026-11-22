@@ -57,8 +57,8 @@ py -3.12 -m venv .venv
 
 | 文件 | 用途 | 何时需要 |
 |---|---|---|
-| `requirements.txt` | fastapi / uvicorn / pydantic / Jinja2 | 基础 Web 环境 |
-| `requirements-web.txt` | Jinja2 / MarkupSafe 固定版本 | 浏览器模板 |
+| `requirements.txt` | fastapi / uvicorn / pydantic / Web 依赖 | 基础 Web 环境 |
+| `requirements-web.txt` | Jinja2 / MarkupSafe / pypdf / defusedxml 固定版本 | 浏览器模板与文档解析 |
 | `requirements-langgraph-experiment.lock.txt` | LangGraph 等锁定版本 | 运行正式面试步骤 |
 | `requirements-llm.txt` | LangChain 等前期候选依赖 | 模型实验按对应阶段文档安装 |
 | `requirements-embed.txt` | FAISS / FastEmbed / ONNX Runtime | 运行本地题库检索，与 P0 依赖一同安装 |
@@ -99,6 +99,8 @@ $env:OBSERVE_STORE_IO = "false"
 本地题库的模型下载、索引重建、查询和检索测试见[检索复现步骤](docs/项目设计/记录/阶段审阅-M1向量检索.md#怎样复现)。
 
 首版题库包含 Agent、RAG 和后端各 10 题。启动后的首次规划会同步内置题库。扩库后如使用向量排序，需要重建本地索引。知识专项选择 8 题时至少选择两个方向。
+
+调试集的材料解析及本地检索对比见 [M4 验收说明](docs/项目设计/记录/阶段审阅-M4首版补齐.md)。核心问答已备有标注，真实追问和复盘质量还待试测。
 
 已准备本地模型和索引时，可给 `scripts/interview_plan.py build` 增加 `--vector`，使用确认后的 JD 和技能排序同方向、同难度的审核候选。索引或模型不可用时保留 SQLite 规划与回退原因。
 
