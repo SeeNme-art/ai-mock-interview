@@ -179,7 +179,7 @@ def _reserve_call(path: Path, session_id: str, operation_id: str, step_key: str,
             cloud = db.execute("SELECT * FROM cloud_budget WHERE id=1").fetchone() if version >= CLOUD_BUDGET_SCHEMA else None
             if cloud is None or (cloud["total_limit_nanos"], cloud["turn_limit_nanos"]) != (
                     cloud_limits.total_limit_nanos, cloud_limits.turn_limit_nanos):
-                raise SessionError("CONFIGURATION_ERROR", "工作台总额度与已冻结配置不匹配")
+                raise SessionError("CLOUD_BUDGET_MISMATCH", "工作台总额度与已冻结配置不匹配")
             if cloud["spent_nanos"] + cloud["reserved_nanos"] + reserve > cloud["total_limit_nanos"]:
                 raise SessionError("BUDGET_EXHAUSTED", "模型调用超出工作台总额度")
             if not db.execute("SELECT 1 FROM turn WHERE id=? AND session_id=?", (turn_id, session_id)).fetchone():

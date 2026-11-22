@@ -147,4 +147,9 @@ class DeepSeekGateway:
             raise SessionError("OUTPUT_INVALID", "供应商返回的输出用量超过请求上限")
         if usage is not None and usage.input_tokens > estimated_input:
             raise SessionError("USAGE_OVER_PLAN", "供应商输入用量超出预估，请暂停并核对")
-        return _read_content(status, payload, self._price.model)
+        try:
+            return _read_content(status, payload, self._price.model)
+        except SessionError as exc:
+            if self._cloud_limits is not None and exc.code == "CONFIGURATION_ERROR":
+                raise SessionError("MODEL_REQUEST_REJECTED", "云端供应商拒绝本次实验请求") from None
+            raise

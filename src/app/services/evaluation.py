@@ -132,7 +132,7 @@ def score_context(context: EvaluationContext, evaluator: DemoEvaluator) -> tuple
                                   answers=answers, source_refs=source_ids)
     except SessionError as exc:
         if exc.code in {"BUDGET_EXHAUSTED", "TURN_BUDGET_EXHAUSTED", "MODEL_UNAVAILABLE", "MODEL_REQUEST_REJECTED",
-                        "OUTPUT_INVALID", "CALL_ALREADY_RECORDED", "CONFIGURATION_ERROR", "BUDGET_NOT_CONFIGURED",
+                        "OUTPUT_INVALID", "CALL_ALREADY_RECORDED", "CLOUD_BUDGET_MISMATCH", "BUDGET_NOT_CONFIGURED",
                         "INPUT_TOO_LARGE", "USAGE_OVER_PLAN"}:
             return None, exc.code
         raise

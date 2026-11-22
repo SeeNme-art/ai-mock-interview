@@ -92,7 +92,7 @@ def _decide(context: ProbeContext, proposer: DemoProposer | None) -> tuple[Probe
         if exc.code in {"BUDGET_EXHAUSTED", "TURN_BUDGET_EXHAUSTED"}:
             return None, "probe_budget_exhausted", exc.code
         if exc.code in {"MODEL_UNAVAILABLE", "MODEL_REQUEST_REJECTED", "CALL_ALREADY_RECORDED",
-                        "CONFIGURATION_ERROR", "BUDGET_NOT_CONFIGURED", "INPUT_TOO_LARGE", "USAGE_OVER_PLAN"}:
+                        "CLOUD_BUDGET_MISMATCH", "BUDGET_NOT_CONFIGURED", "INPUT_TOO_LARGE", "USAGE_OVER_PLAN"}:
             return None, "provider_unavailable", exc.code
         if exc.code == "OUTPUT_INVALID":
             return None, "invalid_proposal", exc.code

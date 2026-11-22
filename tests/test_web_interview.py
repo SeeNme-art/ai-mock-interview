@@ -176,6 +176,8 @@ class WebInterviewTests(unittest.TestCase):
             context = json.loads(request["messages"][1]["content"])
             contexts.append(context)
             exchanges = context["exchanges"]
+            if exchanges[-1]["answer"] == "合成供应商拒绝":
+                return 401, b"ignored provider error"
             ref = {"exchange_id": exchanges[-1]["id"], "quote": exchanges[-1]["answer"]}
             if "rubric" in context:
                 rubric, task = context["rubric"], context["task_type"]
@@ -226,11 +228,21 @@ class WebInterviewTests(unittest.TestCase):
         self.assertEqual(state["progress"]["scored"], 1)
         self.assertEqual(len(contexts), 3)
         self.assertNotIn("RAW_PRIVATE_MARKER", str(contexts))
+        self.request("POST", base + "/advance", key="next-cloud", status=202,
+                     body={"expected_revision": state["revision"]})
+        state = self.request("GET", base + "/state")
+        turn = state["current"]
+        self.request("POST", f"/turns/{turn['turn_id']}/answer", key="provider-rejection", status=202, body={
+            "exchange_id": turn["exchange_id"], "expected_revision": state["revision"], "answer": "合成供应商拒绝"})
+        state = self.request("GET", base + "/state")
+        self.assertEqual((state["progress"]["answered"], state["progress"]["scored"]), (2, 1))
+        self.assertIsNone(state["resume"])
         self.request("POST", base + "/abort", key="abort", status=202,
                      body={"expected_revision": state["revision"], "reason": "user_cancel"})
         report = self.request("GET", base + "/report")
         self.assertTrue(report["cloud_assistance"])
         self.assertEqual(report["knowledge_score"], 75.0)
+        self.assertEqual(report["items"][1]["evaluation"]["error_code"], "MODEL_REQUEST_REJECTED")
         clone = self.request("POST", base + "/clone", key="clone", status=201)
         self.assertFalse(self.request("GET", f"/sessions/{clone['session_id']}/state")["cloud_assistance"])
 
