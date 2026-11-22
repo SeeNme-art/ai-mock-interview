@@ -10,7 +10,19 @@
     {"id":"lc-rag-eval", "title":"LangSmith: Evaluate a RAG application", "locator":"https://docs.langchain.com/langsmith/evaluate-rag-tutorial", "section":"Define evaluators", "source_type":"official_docs", "checked_at":"2026-11-20"},
     {"id":"python-sqlite", "title":"Python 3.12: sqlite3", "locator":"https://docs.python.org/3.12/library/sqlite3.html", "section":"How to use the connection context manager", "source_type":"official_docs", "source_version":"3.12", "checked_at":"2026-11-20"},
     {"id":"fastapi-async", "title":"FastAPI: Concurrency and async / await", "locator":"https://fastapi.tiangolo.com/async/", "section":"Path operation functions / Other utility functions", "source_type":"official_docs", "checked_at":"2026-11-20"},
-    {"id":"pydantic-strict", "title":"Pydantic: Strict Mode", "locator":"https://pydantic.dev/docs/validation/latest/concepts/strict_mode/", "section":"Strict Mode / As a validation parameter", "source_type":"official_docs", "checked_at":"2026-11-20"}
+    {"id":"pydantic-strict", "title":"Pydantic: Strict Mode", "locator":"https://pydantic.dev/docs/validation/latest/concepts/strict_mode/", "section":"Strict Mode / As a validation parameter", "source_type":"official_docs", "checked_at":"2026-11-20"},
+    {"id":"lc-graph-api","title":"LangGraph: Graph API overview","locator":"https://docs.langchain.com/oss/python/langgraph/graph-api","section":"Reducers and edges","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"lc-persistence","title":"LangGraph: Persistence","locator":"https://docs.langchain.com/oss/python/langgraph/persistence","section":"Threads and checkpoints","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"lc-fault","title":"LangGraph: Fault tolerance","locator":"https://docs.langchain.com/oss/python/langgraph/fault-tolerance","section":"Retry policies and timeouts","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"faiss-indexes","title":"FAISS: Indexes","locator":"https://github.com/facebookresearch/faiss/wiki/Faiss-indexes","section":"Flat indexes, identifiers and removal","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"lc-deep-retrieval","title":"Deep Agents: Retrieval","locator":"https://docs.langchain.com/oss/python/deepagents/retrieval","section":"Build a retriever","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"elastic-rank-eval","title":"Elasticsearch: Ranking evaluation API","locator":"https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-rank-eval","section":"Recall and rated documents","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"elastic-rrf","title":"Elasticsearch: Reciprocal rank fusion","locator":"https://www.elastic.co/docs/reference/elasticsearch/rest-apis/reciprocal-rank-fusion","section":"RRF formula","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"http-semantics","title":"IETF RFC 9110: HTTP Semantics","locator":"https://www.rfc-editor.org/rfc/rfc9110.html","section":"9.2.2 Idempotent Methods; 13.1.1 If-Match","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"fastapi-response","title":"FastAPI: Response Model","locator":"https://fastapi.tiangolo.com/tutorial/response-model/","section":"Response filtering","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"sqlite-wal","title":"SQLite: Write-Ahead Logging","locator":"https://www.sqlite.org/wal.html","section":"Concurrency","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"sqlite-rowvalue","title":"SQLite: Row Values","locator":"https://www.sqlite.org/rowvalue.html","section":"Scrolling Window Queries","source_type":"official_docs","checked_at":"2026-11-22"},
+    {"id":"sqlite-upsert","title":"SQLite: UPSERT","locator":"https://www.sqlite.org/lang_upsert.html","section":"Uniqueness conflict target","source_type":"official_docs","checked_at":"2026-11-22"}
   ],
   "questions": [
     {
@@ -112,6 +124,206 @@
       "common_errors":["认为默认类型标注会拒绝所有可转换的输入。"],
       "applicable_dimensions":["correctness","relevance"], "tags":["pydantic","strict-validation"],
       "status":"verified", "checked_at":"2026-11-20", "source_refs":["pydantic-strict"]
+    },
+    {
+      "id":"agent-state-reducer", "stable_faiss_id":105, "revision":1, "dimension":"agent", "difficulty":"basic",
+      "content":"两个节点都往同一份候选证据列表写结果。LangGraph 状态上的 reducer 负责什么？",
+      "objective":"说明共享状态字段如何合并节点更新。",
+      "answer_points":["状态字段的 reducer 定义旧值与新更新怎样合并；没有指定合并语义的普通更新通常替换字段。","若希望累计列表，可用拼接或按业务 ID 合并并解释重复项怎么处理。"],
+      "acceptable_alternatives":["用不同字段保存各分支结果，再在汇总节点显式合并。"],
+      "common_errors":["认为 reducer 负责调度节点；默认同一字段的并发写总能自动合并。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["state","reducer"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["lc-graph-api"]
+    },
+    {
+      "id":"agent-thread-isolation", "stable_faiss_id":106, "revision":1, "dimension":"agent", "difficulty":"basic",
+      "content":"同一个支持恢复的面试图服务两场面试，怎样避免读到对方的 checkpoint？",
+      "objective":"说明 LangGraph thread 与业务会话的定位关系。",
+      "answer_points":["每场使用独立的 thread_id，续跑使用原 ID。","应用在访问 checkpoint 前校验业务会话及归属。"],
+      "acceptable_alternatives":["可以对业务 ID 建一张与 graph thread 的映射表。"],
+      "common_errors":["所有面试用固定 thread_id；把 thread_id 当身份验证。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["checkpoint","thread"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["lc-persistence"]
+    },
+    {
+      "id":"agent-retry-policy", "stable_faiss_id":107, "revision":1, "dimension":"agent", "difficulty":"applied",
+      "content":"一个生成节点有时服务暂不可用，也会因为材料不合格失败。你会怎样配置重试？",
+      "objective":"为不同失败类型配置有限重试。",
+      "answer_points":["仅对明确的暂时故障按次数与时间预算重试，可退避。","材料或 schema 无法满足时返回修正提示或降级；带副作用的步骤先保证幂等。"],
+      "acceptable_alternatives":["用供应商错误类型分类，再由业务层决定可否重试。"],
+      "common_errors":["无限重试或把所有异常都归为暂时网络故障。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["retry","budget"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["lc-fault"]
+    },
+    {
+      "id":"agent-tool-schema-mismatch", "stable_faiss_id":108, "revision":1, "dimension":"agent", "difficulty":"applied",
+      "content":"模型给了字段齐全的工具参数，但请求访问另一场面试。执行器应该在哪些地方阻拦？",
+      "objective":"区分工具输入类型校验与对象级授权。",
+      "answer_points":["工具名和参数先按白名单与 schema 核验。","用服务端身份校验目标资源和动作，未授权时返回失败，不执行工具。"],
+      "acceptable_alternatives":["缩小工具签名，由应用注入会话 ID 而非接受模型填写。"],
+      "common_errors":["认为 JSON 或 strict schema 合法就可以直接执行。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["tools","authorization"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["deepseek-tools","pydantic-strict"]
+    },
+    {
+      "id":"agent-parallel-join", "stable_faiss_id":109, "revision":1, "dimension":"agent", "difficulty":"applied",
+      "content":"检索岗位资料和读取已确认项目可以并行。如何保证汇总只在需要的数据都到齐后执行？",
+      "objective":"设计并行分支与明确汇合条件。",
+      "answer_points":["为两个独立分支安排并行，并在汇合处明确等待两边状态。","明确一支失败时等待、降级或阻止汇总，测试先后完成顺序。"],
+      "acceptable_alternatives":["先分别保存结果或失败标记，由条件节点按齐备状态继续。"],
+      "common_errors":["任意分支结束就直接读取另一个尚未完成的字段。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["parallel","join"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["lc-graph-api"]
+    },
+    {
+      "id":"agent-tool-time-budget", "stable_faiss_id":110, "revision":1, "dimension":"agent", "difficulty":"applied",
+      "content":"工具执行有 2 秒期限，超过后流程已改用已有证据。迟到的工具结果该怎么处理？",
+      "objective":"控制超时后的回退与结果提交资格。",
+      "answer_points":["区分取消请求与停止消费旧结果，超时后走事先定义的回退。","提交结果前检查它是否仍属于当前操作，避免迟到结果覆盖回退结果。"],
+      "acceptable_alternatives":["用操作代次或仅允许一次成功的状态更新实现。"],
+      "common_errors":["假定等待超时就能撤销第三方工具副作用。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["timeout","late-result"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["lc-fault"]
+    },
+    {
+      "id":"rag-top-k", "stable_faiss_id":204, "revision":1, "dimension":"rag", "difficulty":"basic",
+      "content":"检索设置 Top K=5，它限定什么？为什么调大后答案未必更准？",
+      "objective":"辨认检索条数与证据密度的取舍。",
+      "answer_points":["Top K 为排名靠前的候选数量上限，可能因约束实际少于 K。","增大 K 可能带入无关或重复上下文，应比较证据覆盖和成本。"],
+      "acceptable_alternatives":["用固定查询比较 K=3 和 K=5，再检查传给生成器的证据。"],
+      "common_errors":["把 K 当召回率或认为返回越多一定越准。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["top-k","context"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["lc-deep-retrieval","elastic-rank-eval"]
+    },
+    {
+      "id":"rag-recall-at-k", "stable_faiss_id":205, "revision":1, "dimension":"rag", "difficulty":"basic",
+      "content":"人工标了 4 篇相关文档，前三个结果里命中 2 篇。Recall@3 是多少，和 Hit@3 有何不同？",
+      "objective":"计算指定截断位的相关文档覆盖。",
+      "answer_points":["Recall@3 是 2/4，即 0.5，分母为全部已标相关文档。","Hit@3 只判断前三条是否至少命中一个，本查询为 1。"],
+      "acceptable_alternatives":["用比例和二值两个量说明评价差异。"],
+      "common_errors":["用 2/3 算召回率，或把 Hit@3 当命中篇数。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["recall","hit"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["elastic-rank-eval"]
+    },
+    {
+      "id":"rag-hard-filter", "stable_faiss_id":206, "revision":1, "dimension":"rag", "difficulty":"basic",
+      "content":"向量相似最高的是另一岗位方向的题，而用户只选了 RAG。该如何选题？",
+      "objective":"区分候选资格和语义排序。",
+      "answer_points":["先按用户选择、题库审核状态和难度限定资格。","只在合格候选间按相似度排序，无候选时提示。"],
+      "acceptable_alternatives":["先取宽候选再做硬过滤并补取到目标数量，只要候选不足显式处理。"],
+      "common_errors":["用相似度高低覆盖方向、审核状态等硬约束。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["filter","retrieval"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["faiss-indexes","lc-deep-retrieval"]
+    },
+    {
+      "id":"rag-index-rebuild", "stable_faiss_id":207, "revision":1, "dimension":"rag", "difficulty":"basic",
+      "content":"旧索引和新嵌入模型都是 512 维，换模型后可以直接用新模型去查旧索引吗？",
+      "objective":"说明向量维度相同不等于向量空间兼容。",
+      "answer_points":["同样的向量维数不足以保证可比，同一索引的库和查询应使用兼容的编码版本。","用新模型重建候选向量并联同模型标识、数据快照验证和切换。"],
+      "acceptable_alternatives":["保留旧模型与旧索引成对服务，验证新的一对后切换。"],
+      "common_errors":["仅比较维数并让查询混用模型版本。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["embedding","index-version"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["faiss-indexes","lc-deep-retrieval"]
+    },
+    {
+      "id":"rag-rrf", "stable_faiss_id":208, "revision":1, "dimension":"rag", "difficulty":"applied",
+      "content":"关键词检索和向量检索的分数不可直接比较，怎样把两组排序合成一组？",
+      "objective":"基于排名解释 RRF 融合。",
+      "answer_points":["RRF 对同一文档在各列表的 1/(常数+名次) 求和，名次靠前贡献较大。","按文档去重后比较融合排名，在固定样本上与单检索对比。"],
+      "acceptable_alternatives":["可提出带权 RRF，并说明权重必须用调试集验证。"],
+      "common_errors":["直接加未经校准的原始分数并称为 RRF。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["fusion","hybrid"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["elastic-rrf"]
+    },
+    {
+      "id":"rag-empty-gold", "stable_faiss_id":209, "revision":1, "dimension":"rag", "difficulty":"applied",
+      "content":"一条评测查询按人工标注没有任何合格题。怎样纳入检索评测？",
+      "objective":"区分无相关候选样本和常规召回样本。",
+      "answer_points":["这类样本分开统计正确拒绝或覆盖提示，不把无相关项当 Recall@K 的分母。","先确认真的无相关候选而不是标注遗漏，记录负例总数。"],
+      "acceptable_alternatives":["分别报告有答案检索指标和无候选的误返回率。"],
+      "common_errors":["给空分母强行加一，或无说明地删除所有困难负例。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["evaluation","negative"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["elastic-rank-eval"]
+    },
+    {
+      "id":"rag-document-updates", "stable_faiss_id":210, "revision":1, "dimension":"rag", "difficulty":"applied",
+      "content":"文档第 3 节被改写，检索却仍引用旧句。你会怎样更新索引并避免混用版本？",
+      "objective":"同步正文修订、索引版本和证据引用。",
+      "answer_points":["定位受影响的文档与分块 ID，替换对应向量或重建匹配的索引快照。","查询时核验索引和正文版本，引用携带稳定 ID 与修订。"],
+      "acceptable_alternatives":["先离线构建新索引，校验清单后原子切换。"],
+      "common_errors":["仅修改正文或重算查询向量，继续返回旧版分块。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["index-maintenance","citation"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["faiss-indexes"]
+    },
+    {
+      "id":"backend-http-idempotent", "stable_faiss_id":304, "revision":1, "dimension":"backend", "difficulty":"basic",
+      "content":"第一次 DELETE 成功但响应丢失，第二次返回 404。两次状态码不同，能否仍然符合幂等？",
+      "objective":"区分请求预期效果与响应内容。",
+      "answer_points":["幂等判断看多次请求与一次请求的预期服务端效果。","资源持续不存在时两次状态码可以不同。"],
+      "acceptable_alternatives":["用第二次返回 204 的实现说明同一效果也可采用相同状态码。"],
+      "common_errors":["认为幂等要求每个响应字段或状态码完全相同。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["http","idempotency"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["http-semantics"]
+    },
+    {
+      "id":"backend-response-filter", "stable_faiss_id":305, "revision":1, "dimension":"backend", "difficulty":"basic",
+      "content":"内部会话对象有答案和调试字段，但历史列表只应返回标题和状态。怎样在 FastAPI 表达这个约束？",
+      "objective":"通过公开输出模型限制接口字段。",
+      "answer_points":["声明只含允许字段的响应模型，利用框架输出校验与过滤。","如直接构造 Response，应自行确保只序列化公开字段。"],
+      "acceptable_alternatives":["先映射为独立摘要对象，再以响应模型校验。"],
+      "common_errors":["仅在网页隐藏一列，却让接口照样返回内部字段。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["fastapi","output-schema"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["fastapi-response"]
+    },
+    {
+      "id":"backend-sql-parameters", "stable_faiss_id":306, "revision":1, "dimension":"backend", "difficulty":"basic",
+      "content":"SQLite 查询按用户输入的标题筛选，怎样把标题作为值传给 SQL？",
+      "objective":"说明参数绑定分隔 SQL 结构与数据。",
+      "answer_points":["固定 SQL 形式，用占位符和参数绑定传值。","列名一类不能绑定为值的标识符，如需可选，使用固定白名单映射。"],
+      "acceptable_alternatives":["对比 qmark 与命名参数两种绑定方式。"],
+      "common_errors":["把用户标题直接拼到 SQL 字符串。"],
+      "applicable_dimensions":["correctness","relevance"], "tags":["sqlite","parameters"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["python-sqlite"]
+    },
+    {
+      "id":"backend-wal-writer", "stable_faiss_id":307, "revision":1, "dimension":"backend", "difficulty":"applied",
+      "content":"启用 SQLite WAL 后，仍有两个写请求同时争用锁。应该怎样解释并处理？",
+      "objective":"区分 WAL 的读写并行与写者串行。",
+      "answer_points":["WAL 增强读与写并发，同一时刻仍只允许一个写者。","缩短写事务，把网络调用移出事务，可对短暂争用做有界等待或重试。"],
+      "acceptable_alternatives":["通过合适的请求序列化避免竞争，保留超时与回滚验证。"],
+      "common_errors":["声称 WAL 允许无限个并行写事务。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["wal","locking"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["sqlite-wal"]
+    },
+    {
+      "id":"backend-stale-write", "stable_faiss_id":308, "revision":1, "dimension":"backend", "difficulty":"applied",
+      "content":"两个页面都看到修订 7。一个改到 8 后，另一个仍交旧表单。怎样避免覆盖新版本？",
+      "objective":"用原子版本前提实现乐观并发控制。",
+      "answer_points":["请求带预期修订或 If-Match，写事务里原子比较当前版本。","预期不符时拒绝并读取新状态，不用旧表单覆盖。"],
+      "acceptable_alternatives":["SQL 更新使用 WHERE id 与 revision 的条件并检查受影响行数。"],
+      "common_errors":["先在读事务检查一次，之后不带版本条件直接写。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["concurrency","revision"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["http-semantics"]
+    },
+    {
+      "id":"backend-page-cursor", "stable_faiss_id":309, "revision":1, "dimension":"backend", "difficulty":"applied",
+      "content":"历史列表按时间倒序，多个会话可能时间相同。游标应如何设计才能从上一页末尾准确继续？",
+      "objective":"在游标分页中保证稳定的全序和边界。",
+      "answer_points":["按时间与唯一 ID 的组合排序并记录两个值，用独占的组合边界过滤下一页。","查询使用相同排序规则与方向，可为组合字段建立索引。"],
+      "acceptable_alternatives":["写出时间更早，或时间相同但 ID 更小的等价条件。"],
+      "common_errors":["只在游标保存时间并忽略同秒创建的记录。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["pagination","cursor"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["sqlite-rowvalue"]
+    },
+    {
+      "id":"backend-unique-request", "stable_faiss_id":310, "revision":1, "dimension":"backend", "difficulty":"applied",
+      "content":"同一个提交键因网络重试抵达两次，有时第二次内容还不同。数据库怎么判断能否复用？",
+      "objective":"以唯一约束和请求指纹识别重试或冲突。",
+      "answer_points":["唯一键覆盖业务域与请求标识，事务内保存请求摘要和结果定位。","同摘要返回原回执，不同摘要返回冲突；避免先查再插无约束。"],
+      "acceptable_alternatives":["通过 UPSERT 的冲突分支和后续摘要比较实现。"],
+      "common_errors":["无条件用 UPSERT 把原请求结果改成后到版本。"],
+      "applicable_dimensions":["correctness","depth"], "tags":["receipt","transaction"],
+      "status":"verified", "checked_at":"2026-11-22", "source_refs":["sqlite-upsert","http-semantics"]
     }
   ]
 }

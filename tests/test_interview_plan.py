@@ -140,7 +140,8 @@ class InterviewPlanTests(unittest.TestCase):
     def test_limited_candidates_leave_existing_plan_intact(self):
         session = self.session(mode="knowledge_only")
         first = self.build(session)
-        for changes in ({"difficulty": "applied"}, {"directions": ["rag"]}, {"question_count": 8}):
+        for changes in ({"directions": ["rag"], "question_count": 8},
+                        {"directions": ["agent"], "difficulty": "applied", "question_count": 8}):
             with self.subTest(changes=changes), self.assertRaises(PlanningError) as error:
                 self.build(session, "too-few", revision=2, **changes)
             self.assertEqual(error.exception.code, "QUESTION_UNAVAILABLE")
@@ -150,6 +151,9 @@ class InterviewPlanTests(unittest.TestCase):
         session = self.session(mode="knowledge_only")
         payload = self.seed.model_dump(mode="json")
         rows = {question["id"]: question for question in payload["questions"]}
+        for row in rows.values():
+            if row["revision"] == 1:
+                row.update(status="retired", revision=2)
         victim = rows["agent-tool-executor"]
         victim.update(status="retired", revision=victim["revision"] + 1)
         duplicate = rows["agent-json-schema"]
@@ -254,8 +258,9 @@ class InterviewPlanTests(unittest.TestCase):
     def test_uncovered_directions_are_reported_even_when_other_directions_can_fill_plan(self):
         session = self.session(mode="knowledge_only")
         payload = self.seed.model_dump(mode="json")
-        row = next(question for question in payload["questions"] if question["id"] == "rag-cosine-faiss")
-        row.update(status="retired", revision=row["revision"] + 1)
+        for row in payload["questions"]:
+            if row["dimension"] == "rag" and row["difficulty"] == "basic":
+                row.update(status="retired", revision=row["revision"] + 1)
         import_seed(self.bank, SeedBank.model_validate(payload))
         result = self.build(session)
         self.assertEqual(result["coverage"]["rag"], {"knowledge": 0, "project": 0})

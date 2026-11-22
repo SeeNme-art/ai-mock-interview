@@ -75,6 +75,7 @@ class Workspace:
         self.db = directory / "interviews.db"
         self.bank = directory / "question_bank.db"
         self._seed = seed
+        self._bank_ready = False
         self._drafts: dict[str, tuple[str, MaterialDraft]] = {}
         self._lock = Lock()
 
@@ -109,8 +110,13 @@ class Workspace:
 
     def prepare_bank(self) -> None:
         with self._lock:
-            if not self.bank.is_file():
+            if self._bank_ready and self.bank.is_file():
+                return
+            try:
                 import_seed(self.bank, read_seed(self._seed))
+            except (OSError, ValueError):
+                raise SessionError("CONFIGURATION_ERROR", "题库版本暂不兼容，请检查题库导入记录。") from None
+            self._bank_ready = True
 
     def preferences(self, session_id: str) -> dict:
         with closing(connect(self.db, readonly=True)) as db, db:

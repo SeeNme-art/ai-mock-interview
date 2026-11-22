@@ -16,6 +16,8 @@ sys.path.insert(0, str(ROOT / "src"))
 from app.config import Settings
 from app.db.business import MIGRATIONS
 from app.db.sqlite import connect
+from app.kb.seed import read_seed
+from app.kb.store import import_seed, list_questions
 from app.main import create_app
 from app.services.document_text import MAX_DOCUMENT_BYTES
 
@@ -137,6 +139,28 @@ class WebInterviewTests(unittest.TestCase):
         plan = self.request("PATCH", f"/sessions/{session}/config", key="plan",
                             body={"expected_revision": new["revision"], "choices": {}}, status=202)
         return session, plan["revision"], confirmed
+
+    def test_existing_bank_upgrades_and_respects_five_and_eight_question_capacity(self):
+        path = self.root / "question_bank.db"
+        bank = read_seed(ROOT / "data/seeds/knowledge_questions.json")
+        original_ids = {101, 102, 103, 104, 201, 202, 203, 301, 302, 303}
+        legacy = [question for question in bank.questions if question.stable_faiss_id in original_ids]
+        source_ids = {reference for question in legacy for reference in question.source_refs}
+        legacy_sources = [source for source in bank.sources if source.id in source_ids]
+        self.assertEqual(len(legacy), 10)
+        import_seed(path, bank.model_copy(update={"questions": legacy, "sources": legacy_sources}))
+        session, revision, _ = self.configured(source="form")
+        self.assertEqual(len(list_questions(path)), 30)
+        route = f"/sessions/{session}/config"
+        plan = self.request("PATCH", route, key="single-five", status=202,
+                            body={"expected_revision": revision, "choices": {"directions": ["rag"], "difficulty": "applied"}})
+        self.assertEqual((plan["counts"]["knowledge"], plan["question_count"]), (5, 5))
+        error = self.request("PATCH", route, key="single-eight", status=409, body={
+            "expected_revision": plan["revision"], "choices": {"directions": ["rag"], "question_count": 8}})
+        self.assertEqual(error["code"], "QUESTION_UNAVAILABLE")
+        wider = self.request("PATCH", route, key="two-eight", status=202, body={
+            "expected_revision": plan["revision"], "choices": {"directions": ["rag", "agent"], "question_count": 8}})
+        self.assertEqual((wider["counts"]["knowledge"], len(wider["items"])), (8, 8))
 
     def test_complete_mixed_http_flow_replay_and_report_after_app_restart(self):
         session, revision, confirmed = self.configured()
