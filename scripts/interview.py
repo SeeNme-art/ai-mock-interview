@@ -14,6 +14,7 @@ from app.services.advancement import accept_advance
 from app.services.answers import MAX_ANSWER_CHARS, accept_answer
 from app.services.evaluation import accept_evaluation
 from app.services.first_question import accept_start, read_state
+from app.services.reports import generate_report, read_report
 
 
 def read_answer(path: Path | None) -> str:
@@ -83,6 +84,10 @@ def main() -> int:
     resume_advance = actions.add_parser("resume-advance", help="explicitly continue a saved advance operation")
     resume_advance.add_argument("session_id")
     resume_advance.add_argument("operation_id")
+    actions.add_parser("generate-report", help="save or reuse the local report for a finished session").add_argument("session_id")
+    report = actions.add_parser("report", help="read a saved report without generating it")
+    report.add_argument("session_id")
+    report.add_argument("--revision", type=int)
     args = parser.parse_args()
     try:
         if args.action == "answer":
@@ -90,6 +95,10 @@ def main() -> int:
                                    args.expected_revision, args.key, read_answer(args.answer_file))
         elif args.action == "state":
             result = read_state(args.db, args.session_id)
+        elif args.action == "generate-report":
+            result = generate_report(args.db, args.session_id)
+        elif args.action == "report":
+            result = read_report(args.db, args.session_id, args.revision)
         else:
             from app.workflow.interview import run_advance, run_answer, run_evaluation, run_first_question
 
