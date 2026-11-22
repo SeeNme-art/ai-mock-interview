@@ -35,13 +35,23 @@
       <div class="layout">
         <form id="preview-form" class="card stack">
           <h2>选择材料来源</h2>
-          <label>来源<select name="source"><option value="text" {% if source == 'text' %}selected{% endif %}>粘贴文本</option><option value="example" {% if source == 'example' %}selected{% endif %}>内置示例</option></select></label>
+          <label>来源<select name="source"><option value="text" {% if source == 'text' %}selected{% endif %}>粘贴文本</option><option value="file">上传 PDF 或 DOCX</option><option value="form">手动填写</option><option value="example" {% if source == 'example' %}selected{% endif %}>内置示例</option></select></label>
           <label id="paste-label">材料文本<textarea name="text" maxlength="16000" rows="8" placeholder="岗位描述：开发文档检索服务&#10;技能：Python、SQLite&#10;项目做法：搭建索引并接入问答&#10;项目结果：比较改动前后的召回"></textarea></label>
           <p class="muted" id="paste-help">可以按提示格式填写，也可以在预览后补充。带标签的行会填入对应字段。</p>
+          <div id="file-fields" class="stack" hidden>
+            <label>选择文件<input name="file" type="file" accept=".pdf,.docx"></label>
+            <p class="muted">最大 5 MiB，PDF 最多 20 页。图片扫描件请先转成文字后粘贴。</p>
+          </div>
           <div><button type="submit">预览材料</button></div>
         </form>
         <form id="confirm-form" class="card stack" hidden>
           <h2>核对后确认</h2>
+          <details id="document-preview" hidden>
+            <summary>查看提取文字</summary>
+            <p class="muted">请核对数字、单位和项目归属。未识别的字段可以手动补充。</p>
+            <textarea id="document-text" readonly rows="6" aria-label="提取文字"></textarea>
+          </details>
+          <p class="muted" id="missing-fields" hidden></p>
           <label>岗位描述<textarea name="jd_text" maxlength="8000" rows="3"></textarea></label>
           <label>技能（用逗号或顿号分隔）<input name="skills"></label>
           <label>项目名称<input name="name" maxlength="120"></label>

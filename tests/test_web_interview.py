@@ -1,11 +1,15 @@
 from pathlib import Path
 from contextlib import closing
+from io import BytesIO
 import sys
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
+from pypdf import PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -13,6 +17,42 @@ from app.config import Settings
 from app.db.business import MIGRATIONS
 from app.db.sqlite import connect
 from app.main import create_app
+from app.services.document_text import MAX_DOCUMENT_BYTES
+
+
+def synthetic_docx(paragraphs, *, preamble=""):
+    from xml.sax.saxutils import escape
+
+    xml = "".join(f"<w:p><w:r><w:t>{escape(line)}</w:t></w:r></w:p>" for line in paragraphs)
+    output = BytesIO()
+    with ZipFile(output, "w") as package:
+        package.writestr("[Content_Types].xml", '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        package.writestr("word/document.xml", preamble + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                         f"<w:body>{xml}</w:body></w:document>")
+    return output.getvalue()
+
+
+def synthetic_pdf(*, text=None, pages=1, encrypted=False):
+    output = BytesIO()
+    writer = PdfWriter()
+    for _ in range(pages):
+        page = writer.add_blank_page(width=595, height=842)
+        if text:
+            page[NameObject("/Resources")] = DictionaryObject({
+                NameObject("/Font"): DictionaryObject({
+                    NameObject("/F1"): DictionaryObject({
+                        NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"),
+                        NameObject("/BaseFont"): NameObject("/Helvetica"),
+                    }),
+                }),
+            })
+            stream = DecodedStreamObject()
+            stream.set_data(f"BT /F1 12 Tf 40 780 Td ({text}) Tj ET".encode("ascii"))
+            page.replace_contents(stream)
+    if encrypted:
+        writer.encrypt("fixture-password")
+    writer.write(output)
+    return output.getvalue()
 
 
 class WebInterviewTests(unittest.TestCase):
@@ -33,6 +73,60 @@ class WebInterviewTests(unittest.TestCase):
         response = self.client.request(method, "/api/v1" + path, headers=headers, json=body)
         self.assertEqual(response.status_code, status, response.text)
         return response.json()["data"] if status < 300 else response.json()["error"]
+
+    def upload(self, content, format="docx", *, key="upload"):
+        return self.client.post("/api/v1/drafts/document", params={"format": format}, content=content,
+                                headers={"Idempotency-Key": key, "Content-Type": "application/octet-stream"})
+
+    def test_docx_preview_confirmation_keeps_only_selected_fields(self):
+        document = synthetic_docx(["岗位描述：维护检索", "技能：Python、SQLite", "项目做法：比较索引性能",
+                                   "项目结果：覆盖 37 条样本", "未确认句 RAW_PRIVATE_MARKER contact@example.test"])
+        response = self.upload(document)
+        self.assertEqual(response.status_code, 200, response.text)
+        preview = response.json()["data"]
+        self.assertEqual(self.upload(document).json()["data"], preview)
+        self.assertEqual(self.upload(synthetic_docx(["其他材料"])).status_code, 409)
+        self.assertIn("RAW_PRIVATE_MARKER", preview["source_text"])
+        self.assertNotIn("contact@example.test", response.text)
+        material = preview["material"]
+        self.assertEqual(material["projects"][0]["result"], "覆盖 37 条样本")
+        material["projects"][0]["result"] = "人工核对后确认覆盖 37 条样本"
+        session = self.request("POST", "/sessions", key="confirm", status=201,
+                               body={"draft_id": preview["draft_id"], "material": material, "mode": "mixed"})
+        state = self.request("GET", f"/sessions/{session['session_id']}/state")
+        self.assertEqual(state["source"], "docx")
+        self.assertNotIn(b"RAW_PRIVATE_MARKER", (self.root / "interviews.db").read_bytes())
+        ambiguous = self.upload(synthetic_docx(["项目名称：A", "项目做法：搭索引", "项目名称：B", "项目结果：50 次"]),
+                                key="ambiguous")
+        self.assertEqual(ambiguous.json()["data"]["material"]["projects"], [])
+
+    def test_pdf_text_and_manual_entry(self):
+        response = self.upload(synthetic_pdf(text="Checked 37 rows."), "pdf")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["data"]["source_text"], "Checked 37 rows.")
+        start = self.request("POST", "/drafts/preview", key="manual", body={"source": "form"})
+        self.assertEqual(start["material"]["skills"], [])
+        self.request("POST", "/sessions", key="confirm", status=201, body={
+            "draft_id": start["draft_id"], "material": {"skills": ["SQLite"]}, "mode": "knowledge_only"})
+
+    def test_document_failures_are_safe_and_stream_size_is_bounded(self):
+        cases = [
+            (b"RAW_PRIVATE_MARKER", "pdf", 422, "DOCUMENT_INVALID"),
+            (b"RAW_PRIVATE_MARKER", "docx", 422, "DOCUMENT_INVALID"),
+            (synthetic_pdf(), "pdf", 422, "DOCUMENT_NO_TEXT"),
+            (synthetic_pdf(encrypted=True), "pdf", 422, "DOCUMENT_ENCRYPTED"),
+            (synthetic_pdf(pages=21), "pdf", 422, "DOCUMENT_LIMIT"),
+            (synthetic_docx(["A" * 16001]), "docx", 422, "DOCUMENT_LIMIT"),
+            (synthetic_docx(["A"], preamble="<!DOCTYPE document>"), "docx", 422, "DOCUMENT_INVALID"),
+            (b"A" * (MAX_DOCUMENT_BYTES + 1), "docx", 413, "DOCUMENT_TOO_LARGE"),
+            (iter([b"A" * MAX_DOCUMENT_BYTES, b"A"]), "docx", 413, "DOCUMENT_TOO_LARGE"),
+        ]
+        for content, format, status, code in cases:
+            with self.subTest(format=format, code=code):
+                response = self.upload(content, format)
+                self.assertEqual(response.status_code, status, response.text)
+                self.assertEqual(response.json()["error"]["code"], code)
+                self.assertNotIn("RAW_PRIVATE_MARKER", response.text)
 
     def configured(self, *, source="example"):
         preview = self.request("POST", "/drafts/preview", key="preview", body={"source": source})

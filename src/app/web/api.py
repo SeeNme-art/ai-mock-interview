@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+from hashlib import sha256
 import json
 import sqlite3
 from pathlib import Path
@@ -11,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, Header, Query,
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.db.business import OWNER_ID, SessionError, check_business_schema, find_session, validate_request_key
 from app.db.sqlite import connect
@@ -18,9 +20,10 @@ from app.schemas.materials import Confirmation
 from app.schemas.planning import PlanChanges
 from app.services.advancement import accept_advance, accept_skip
 from app.services.answers import accept_answer
+from app.services.document_text import DocumentError, DocumentFormat, MAX_DOCUMENT_BYTES, document_too_large, extract_document
 from app.services.finalization import accept_abort
 from app.services.first_question import accept_start, read_state
-from app.services.materials import ConfirmationConflict, DraftExpired, confirm_material
+from app.services.materials import ConfirmationConflict, DraftExpired, TEXT_LIMIT, confirm_material
 from app.services.planning import rebuild_plan, show_plan
 from app.services.reports import generate_report, read_report
 from app.web.workspace import Workspace
@@ -51,8 +54,8 @@ class Input(BaseModel):
 
 
 class Preview(Input):
-    source: Literal["text", "example"]
-    text: str = Field(default="", max_length=16_000)
+    source: Literal["text", "example", "form"]
+    text: str = Field(default="", max_length=TEXT_LIMIT)
 
 
 class Confirm(Confirmation):
@@ -93,6 +96,11 @@ def _error(status: int, code: str, message: str, revision: int | None = None) ->
 
 
 def register_errors(app: FastAPI) -> None:
+    @app.exception_handler(DocumentError)
+    async def invalid_document(_request: Request, exc: DocumentError):
+        status = 413 if exc.code == "DOCUMENT_TOO_LARGE" else 422
+        return _error(status, exc.code, str(exc))
+
     @app.exception_handler(SessionError)
     async def session_error(_request: Request, exc: SessionError):
         status = {"FORBIDDEN": 403, "INVALID_INPUT": 422, "DRAFT_EXPIRED": 410, "RESOURCE_NOT_FOUND": 404,
@@ -133,11 +141,29 @@ def business_api(workspace: Workspace, observe: Path) -> APIRouter:
             tasks.add_task(workspace.process, session_id, operation_id)
         return _ok({"session_id": session_id, "operation_id": operation_id})
 
+    def preview_data(draft):
+        return {"draft_id": draft.id, "expires_at": draft.expires_at.isoformat(),
+                "material": json.loads(draft.initial_material_json)}
+
     @router.post("/drafts/preview")
     def preview(body: Preview, key: Key):
-        draft = workspace.preview(key, body.source, body.text)
-        return _ok({"draft_id": draft.id, "expires_at": draft.expires_at.isoformat(),
-                    "material": json.loads(draft.initial_material_json)})
+        return _ok(preview_data(workspace.preview(key, body.source, body.text)))
+
+    @router.post("/drafts/document")
+    async def preview_document(request: Request, key: Key, format: DocumentFormat):
+        if request.headers.get("content-type") != "application/octet-stream":
+            raise DocumentError("DOCUMENT_INVALID", "请选择 PDF 或 DOCX 文件后重新上传。")
+        length = request.headers.get("content-length")
+        if length and length.isdecimal() and int(length) > MAX_DOCUMENT_BYTES:
+            raise document_too_large()
+        content = bytearray()
+        async for chunk in request.stream():
+            if len(content) + len(chunk) > MAX_DOCUMENT_BYTES:
+                raise document_too_large()
+            content.extend(chunk)
+        text = await run_in_threadpool(extract_document, bytes(content), format)
+        draft = workspace.preview(key, format, text, file_digest=sha256(content).hexdigest())
+        return _ok({**preview_data(draft), "source_text": text})
 
     @router.post("/sessions", status_code=201)
     def create_session(body: Confirm, key: Key):

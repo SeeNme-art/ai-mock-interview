@@ -26,16 +26,22 @@ EXAMPLE = MaterialInput(
     projects=[ProjectInput(name="课程检索练习", action="实现文档分块并保存段落出处", result="用固定查询比较两种分块大小")],
 )
 LABELS = {"岗位描述": "jd_text", "技能": "skills", "项目名称": "name", "项目做法": "action", "项目结果": "result"}
+MaterialSource = Literal["example", "text", "form", "pdf", "docx"]
 
 
 def _candidate(text: str) -> MaterialInput:
     values = {}
+    project_fields = ("name", "action", "result")
+    ambiguous_project = False
     for line in preview_text(text).splitlines():
         tag, separator, value = line.replace("：", ":", 1).partition(":")
         if separator and tag.strip() in LABELS and value.strip():
-            values[LABELS[tag.strip()]] = value.strip()
+            field = LABELS[tag.strip()]
+            if field in project_fields and field in values:
+                ambiguous_project = True
+            values[field] = value.strip()
     skills = values.get("skills", "").replace("、", ",").replace("，", ",").split(",")
-    project = {name: values[name] for name in ("name", "action", "result") if name in values}
+    project = {name: values[name] for name in project_fields if name in values} if not ambiguous_project else {}
     return MaterialInput(jd_text=values.get("jd_text"), skills=[skill.strip() for skill in skills if skill.strip()],
                          projects=[ProjectInput(**project)] if "action" in project else [])
 
@@ -72,8 +78,8 @@ class Workspace:
         self._drafts: dict[str, tuple[str, MaterialDraft]] = {}
         self._lock = Lock()
 
-    def preview(self, key: str, source: Literal["example", "text"], text: str) -> MaterialDraft:
-        digest = sha256(canonical_json([source, text]))
+    def preview(self, key: str, source: MaterialSource, text: str = "", *, file_digest: str | None = None) -> MaterialDraft:
+        digest = sha256(canonical_json([source, file_digest if file_digest is not None else text]))
         with self._lock:
             self._purge_drafts()
             saved = self._drafts.get(key)
@@ -82,7 +88,7 @@ class Workspace:
                     raise SessionError("IDEMPOTENCY_CONFLICT", "材料预览已使用该请求标识")
                 return saved[1]
             material = EXAMPLE if source == "example" else _candidate(text)
-            draft = start_draft(material, "form" if source == "example" else "text", web_source=source)
+            draft = start_draft(material, "form" if source in {"example", "form"} else "text", web_source=source)
             if len(self._drafts) >= 64:
                 raise SessionError("OPERATION_IN_PROGRESS", "暂存预览已满，请稍后再试")
             self._drafts[key] = (digest, draft)

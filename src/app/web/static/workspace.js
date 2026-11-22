@@ -4,6 +4,7 @@ const byId = id => document.getElementById(id);
 const {page, session, source} = document.body.dataset;
 const base = "/sessions/" + encodeURIComponent(session);
 const keys = new Map();
+const fileKeys = new WeakMap();
 const directions = {agent: "Agent 工程", rag: "RAG 检索", backend: "后端开发"};
 const types = {knowledge: "知识题", project: "项目题"};
 const outcomes = {skipped: "已跳过", generation_failed: "题目不可用", unanswered: "未回答", answered: "已回答"};
@@ -26,7 +27,11 @@ function notice(text, error = false) {
 
 async function api(path, method = "GET", payload) {
   const options = {method};
-  if (method !== "GET") {
+  if (payload instanceof File) {
+    if (!fileKeys.has(payload)) fileKeys.set(payload, crypto.randomUUID());
+    options.headers = {"Content-Type": "application/octet-stream", "Idempotency-Key": fileKeys.get(payload)};
+    options.body = payload;
+  } else if (method !== "GET") {
     const body = JSON.stringify(payload ?? {});
     const identity = method + path + body;
     if (!keys.has(identity)) keys.set(identity, crypto.randomUUID());
@@ -73,21 +78,56 @@ async function newPage() {
   const form = byId("preview-form");
   const confirmation = byId("confirm-form");
   let draft;
-  const showPaste = () => {
-    byId("paste-label").hidden = form.elements.source.value === "example";
+  let inputVersion = 0;
+  const showSource = () => {
+    const mode = form.elements.source.value;
+    byId("paste-label").hidden = mode !== "text";
     byId("paste-help").hidden = byId("paste-label").hidden;
+    byId("file-fields").hidden = mode !== "file";
   };
-  form.elements.source.addEventListener("change", () => { showPaste(); confirmation.hidden = true; });
-  showPaste();
+  form.addEventListener("input", () => {
+    inputVersion += 1;
+    draft = undefined;
+    showSource();
+    confirmation.hidden = true;
+    byId("document-text").value = "";
+  });
+  showSource();
   form.addEventListener("submit", handle(form.querySelector("button"), async () => {
     const mode = form.elements.source.value;
-    draft = await api("/drafts/preview", "POST", {source: mode, text: mode === "text" ? form.elements.text.value : ""});
+    const version = inputVersion;
+    confirmation.hidden = true;
+    draft = undefined;
+    let preview;
+    if (mode === "file") {
+      const file = form.elements.file.files[0];
+      const format = file?.name.split(".").pop().toLowerCase();
+      if (!file || !["pdf", "docx"].includes(format)) throw new Error("请选择 PDF 或 DOCX 文件。");
+      if (file.size > 5 * 1024 * 1024) throw new Error("文件最大 5 MiB，请缩小文件或粘贴文本。");
+      preview = await api("/drafts/document?format=" + format, "POST", file);
+    } else {
+      preview = await api("/drafts/preview", "POST", {source: mode, text: mode === "text" ? form.elements.text.value : ""});
+    }
+    if (version !== inputVersion) return;
+    draft = preview;
     const material = draft.material;
     for (const key of ["jd_text", "name", "action", "result"]) {
       confirmation.elements[key].value = material[key] ?? material.projects[0]?.[key] ?? "";
     }
     confirmation.elements.skills.value = material.skills.join("、");
     confirmation.elements.mode.value = material.projects.length ? "mixed" : "knowledge_only";
+    const documentPreview = byId("document-preview");
+    documentPreview.hidden = !draft.source_text;
+    documentPreview.open = Boolean(draft.source_text);
+    byId("document-text").value = draft.source_text ?? "";
+    const missing = [];
+    if (!material.jd_text) missing.push("岗位描述");
+    if (!material.skills.length) missing.push("技能");
+    if (!material.projects.length) missing.push("项目做法");
+    else if (!material.projects[0].result) missing.push("项目结果");
+    const missingFields = byId("missing-fields");
+    missingFields.hidden = !missing.length;
+    missingFields.textContent = "可按需补充：" + missing.join("、") + "。";
     confirmation.hidden = false;
     confirmation.elements.jd_text.focus();
   }));
