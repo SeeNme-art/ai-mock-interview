@@ -107,7 +107,7 @@ def read_state(path: Path, session_id: str) -> dict:
         operation = current = None
         if version >= 2:
             operation = db.execute("""SELECT id AS operation_id,kind,status,error_code,result_refs_json FROM operation
-                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer','evaluate_answer','advance','finalize')
+                         WHERE session_id=? AND owner_id=? AND kind IN ('start','answer','evaluate_answer','advance','skip','finalize')
                          ORDER BY expected_epoch DESC LIMIT 1""", (session_id, OWNER_ID)).fetchone()
         if version >= 3:
             current = db.execute("""SELECT t.id AS turn_id,e.id AS exchange_id,p.seq,e.round_no,t.state,e.question_text AS question,
@@ -130,9 +130,11 @@ def read_state(path: Path, session_id: str) -> dict:
                 operation_view["evaluation_status"] = refs.get("evaluation_status", "pending")
             if operation_view["kind"] == "finalize" and "evaluation_status" in refs:
                 operation_view["evaluation_status"] = refs["evaluation_status"]
-            if operation_view["kind"] == "advance" and "outcome" in refs:
+            if operation_view["kind"] in ("advance", "skip") and "outcome" in refs:
                 operation_view["outcome"] = refs["outcome"]
                 operation_view["unavailable"] = refs["unavailable"]
+                if operation_view["kind"] == "skip":
+                    operation_view["skipped_seq"] = refs["skipped_seq"]
         return {
             "session_id": session_id, "phase": session["phase"], "revision": session["revision"],
             "plan_version": session["plan_version"] if version >= 2 else 0,

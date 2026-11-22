@@ -8,7 +8,7 @@ from langgraph.graph import END, START, StateGraph
 from langsmith import tracing_context
 
 from app.db.business import operation_epoch
-from app.services.advancement import ADVANCE, STEP as ADVANCE_STEP, advance_plan
+from app.services.advancement import ADVANCE, SKIP, STEP as ADVANCE_STEP, advance_plan
 from app.services.evaluation import EVALUATE, DemoEvaluator, process_evaluation
 from app.services.finalization import FINALIZE, finalize_interview
 from app.services.first_question import prepare_first_question, start_epoch
@@ -26,7 +26,7 @@ class InterviewState(TypedDict, total=False):
 
 
 def _run_interview(path: Path, initial: InterviewState,
-                   command: Literal["start", "answer", "evaluate_answer", "advance", "finalize"], *,
+                   command: Literal["start", "answer", "evaluate_answer", "advance", "skip", "finalize"], *,
                    bank: Path | None = None, proposer: DemoProposer | None = None,
                    evaluator: DemoEvaluator | None = None) -> InterviewState:
     def prepare(state: InterviewState) -> dict:
@@ -43,7 +43,8 @@ def _run_interview(path: Path, initial: InterviewState,
     def advance(state: InterviewState) -> dict:
         if bank is None:
             raise RuntimeError("推进节点缺少审核题库配置")
-        return advance_plan(path, bank, state["session_id"], state["operation_id"], state["control_epoch"])
+        return advance_plan(path, bank, state["session_id"], state["operation_id"], state["control_epoch"],
+                            kind=SKIP if command == SKIP else ADVANCE)
 
     def finalize(state: InterviewState) -> dict:
         return finalize_interview(path, state["session_id"], state["operation_id"], state["control_epoch"], evaluator)
@@ -56,7 +57,7 @@ def _run_interview(path: Path, initial: InterviewState,
     builder.add_node(FINALIZE, finalize)
     builder.add_conditional_edges(START, lambda _: command,
                                   {"start": "prepare_first_question", "answer": "decide_follow_up",
-                                   EVALUATE: EVALUATE, ADVANCE: ADVANCE_STEP, FINALIZE: FINALIZE})
+                                   EVALUATE: EVALUATE, ADVANCE: ADVANCE_STEP, SKIP: ADVANCE_STEP, FINALIZE: FINALIZE})
     builder.add_edge("prepare_first_question", END)
     builder.add_edge("decide_follow_up", END)
     builder.add_edge(EVALUATE, END)
@@ -84,10 +85,11 @@ def run_evaluation(path: Path, session_id: str, operation_id: str, evaluator: De
     return _run_interview(path, initial, EVALUATE, evaluator=evaluator)
 
 
-def run_advance(path: Path, bank: Path, session_id: str, operation_id: str) -> InterviewState:
+def run_advance(path: Path, bank: Path, session_id: str, operation_id: str, *,
+                kind: Literal["advance", "skip"] = ADVANCE) -> InterviewState:
     initial = {"session_id": session_id, "operation_id": operation_id,
-               "control_epoch": operation_epoch(path, session_id, operation_id, ADVANCE)}
-    return _run_interview(path, initial, ADVANCE, bank=bank)
+               "control_epoch": operation_epoch(path, session_id, operation_id, kind)}
+    return _run_interview(path, initial, kind, bank=bank)
 
 
 def run_finalize(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None) -> InterviewState:

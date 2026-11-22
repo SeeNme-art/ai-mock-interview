@@ -18,12 +18,13 @@ from app.kb.store import import_seed
 from app.schemas.materials import Confirmation, MaterialInput, ProjectInput
 from app.schemas.planning import PlanChanges
 from app.schemas.scoring import DIMENSIONS
-from app.services.advancement import accept_advance
+from app.services.advancement import SKIP, accept_advance, accept_skip
 from app.services.answers import accept_answer
 from app.services.evaluation import accept_evaluation
 from app.services.first_question import accept_start, prepare_first_question, read_state, start_epoch
 from app.services.materials import confirm_material, start_draft
 from app.services.planning import rebuild_plan
+from app.services.reports import generate_report
 
 try:
     from app.workflow.interview import run_advance, run_answer, run_evaluation
@@ -85,14 +86,23 @@ class AdvancementTests(unittest.TestCase):
             for key in DIMENSIONS[context.task_type]
         }}
 
-    def close_current(self, *, valid=True):
+    def respond(self):
         state = self.state()
         current = state["current"]
         receipt = accept_answer(self.db, self.session, current["turn_id"], current["exchange_id"],
                                 state["revision"], f"answer-{current['seq']}", ANSWER)
-        run_answer(self.db, self.session, receipt["operation_id"], lambda _: {"should_probe": False, "reason": "合成收尾"})
-        score, _ = accept_evaluation(self.db, self.session, receipt["operation_id"], self.state()["revision"],
+        return receipt["operation_id"]
+
+    def queue_score(self):
+        current = self.state()["current"]
+        answer = self.respond()
+        run_answer(self.db, self.session, answer, lambda _: {"should_probe": False, "reason": "合成收尾"})
+        score, _ = accept_evaluation(self.db, self.session, answer, self.state()["revision"],
                                      f"score-{current['seq']}")
+        return score
+
+    def close_current(self, *, valid=True):
+        score = self.queue_score()
         run_evaluation(self.db, self.session, score, self.assessment if valid else lambda _: {})
 
     def queue(self, key="advance-1", revision=None):
@@ -102,6 +112,15 @@ class AdvancementTests(unittest.TestCase):
         operation, accepted = self.queue(key)
         self.assertTrue(accepted)
         return run_advance(self.db, self.bank, self.session, operation)
+
+    def skip_request(self, key):
+        state = self.state()
+        return self.db, self.session, state["current"]["turn_id"], state["revision"], key
+
+    def skip(self, key):
+        operation, accepted = accept_skip(*self.skip_request(key))
+        self.assertTrue(accepted)
+        return run_advance(self.db, self.bank, self.session, operation, kind=SKIP)
 
     def test_five_question_knowledge_session_finishes_on_last_score(self):
         self.plan()
@@ -272,3 +291,147 @@ class AdvancementTests(unittest.TestCase):
         self.assertEqual(prepared["current"]["seq"], 2)
         self.assertEqual(call(*duplicate), prepared)
         self.assertEqual(call("state", self.session), prepared)
+
+    def test_skip_moves_to_next_frozen_item_and_replay_cannot_skip_it_again(self):
+        self.plan()
+        with self.assertRaises(SessionError) as missing:
+            accept_skip(self.db, self.session, "no-turn", self.state()["revision"], "not-started")
+        self.assertEqual(missing.exception.code, "ILLEGAL_ACTION")
+        plan_ids = [slot["id"] for slot in self.slots()]
+        self.start()
+        request = self.skip_request("skip-first")
+        turn_id = request[2]
+        with self.assertRaises(SessionError) as stale:
+            accept_skip(self.db, self.session, turn_id, request[3] - 1, "stale")
+        self.assertEqual(stale.exception.code, "STALE_REVISION")
+        operation, _ = accept_skip(*request)
+        self.assertIsNone(self.state()["current"])
+        self.assertEqual(self.state()["operation"]["status"], "queued")
+        result = run_advance(self.db, self.bank, self.session, operation, kind=SKIP)
+        self.assertEqual(accept_skip(*request), (operation, False))
+        with patch("app.services.question_delivery.list_questions", side_effect=AssertionError("already published")):
+            self.assertEqual(run_advance(self.db, self.bank, self.session, operation, kind=SKIP), result)
+        state = self.state()
+        self.assertEqual((state["current"]["seq"], state["operation"]["skipped_seq"]), (2, 1))
+        self.assertEqual(state["progress"], {"planned": 5, "closed": 1, "answered": 0, "scored": 0, "skipped": 1, "failed": 0})
+        self.assertEqual([slot["id"] for slot in self.slots()], plan_ids)
+        with self.assertRaises(SessionError) as conflict:
+            accept_skip(*self.skip_request("skip-first"))
+        self.assertEqual(conflict.exception.code, "IDEMPOTENCY_CONFLICT")
+        with self.assertRaises(SessionError) as closed:
+            accept_skip(self.db, self.session, turn_id, state["revision"], "already-closed")
+        self.assertEqual(closed.exception.code, "ILLEGAL_ACTION")
+
+    def test_skip_rejects_late_probe_and_retains_submitted_answer(self):
+        self.plan()
+        self.start()
+        answer_id = self.respond()
+        probe = "你会怎样验证这组约束？"
+
+        def late_probe(context):
+            self.skip("skip-during-probe")
+            return {"should_probe": True, "purpose": "deepen", "reason": "合成追问", "probe_question": probe,
+                    "evidence_refs": [{"exchange_id": context.exchanges[0].id, "quote": ANSWER}]}
+
+        with self.assertRaises(SessionError) as late:
+            run_answer(self.db, self.session, answer_id, late_probe)
+        self.assertEqual(late.exception.code, "ILLEGAL_ACTION")
+        self.assertEqual(self.state()["current"]["seq"], 2)
+        self.assertEqual(self.state()["progress"]["answered"], 1)
+        with closing(connect(self.db, readonly=True)) as db:
+            self.assertEqual(tuple(db.execute("SELECT status,error_code FROM operation WHERE id=?", (answer_id,)).fetchone()),
+                             ("cancelled", "CANCELLED"))
+            self.assertEqual(db.execute("SELECT count(*) FROM exchange WHERE question_text=?", (probe,)).fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT count(*) FROM exchange WHERE answer_text=?", (ANSWER,)).fetchone()[0], 1)
+
+    def test_late_score_cannot_change_skip_and_report_uses_only_remaining_valid_scores(self):
+        self.plan()
+        self.start()
+        score = self.queue_score()
+
+        def late_assessment(context):
+            self.skip("skip-during-score")
+            return self.assessment(context)
+
+        with self.assertRaises(SessionError) as late:
+            run_evaluation(self.db, self.session, score, late_assessment)
+        self.assertEqual(late.exception.code, "ILLEGAL_ACTION")
+        with closing(connect(self.db, readonly=True)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM evaluation").fetchone()[0], 0)
+        for seq in range(2, 6):
+            self.assertEqual(self.state()["current"]["seq"], seq)
+            self.close_current()
+            if seq < 5:
+                self.advance(f"after-{seq}")
+        report = generate_report(self.db, self.session)
+        self.assertEqual((report["end_reason"], report["knowledge_score"], report["is_partial"]), ("completed", 75, True))
+        self.assertEqual((report["counts"]["answered"], report["counts"]["scored"], report["counts"]["skipped"]), (5, 4, 1))
+        skipped = report["items"][0]
+        self.assertEqual((skipped["outcome"], skipped["evaluation"], skipped["exchanges"][0]["answer"]),
+                         ("skipped", None, ANSWER))
+
+    def test_skip_last_slot_finishes_and_reports_previous_score(self):
+        self.plan()
+        self.start()
+        for seq in range(1, 5):
+            self.close_current()
+            self.advance(f"completed-{seq}")
+        self.skip("skip-last")
+        last = self.state()
+        self.assertEqual((last["phase"], last["end_reason"], last["current"]), ("FINISHED", "completed", None))
+        self.assertEqual((last["progress"]["skipped"], last["progress"]["scored"]), (1, 4))
+        self.assertEqual((last["operation"]["outcome"], last["operation"]["skipped_seq"]), ("finished", 5))
+        self.assertEqual(generate_report(self.db, self.session)["knowledge_score"], 75)
+
+    def test_skip_handles_unavailable_following_slots_and_report_preserves_the_reasons(self):
+        self.plan(mixed=True)
+        self.start()
+        self.skip("skip-before-project")
+        self.assertEqual(self.state()["current"]["seq"], 3)
+        self.assertEqual(self.state()["operation"]["unavailable"], [{"seq": 2, "reason_code": "MODEL_UNAVAILABLE"}])
+        self.skip("skip-second-knowledge")
+        self.skip("skip-final-knowledge")
+        report = generate_report(self.db, self.session)
+        self.assertEqual((report["kind"], report["counts"]["skipped"], report["counts"]["system_failed"]), ("summary", 3, 2))
+        self.assertEqual([item["generation_error_code"] for item in report["items"] if item["outcome"] == "generation_failed"],
+                         ["MODEL_UNAVAILABLE", "MODEL_UNAVAILABLE"])
+
+    def test_failed_skip_acceptance_rolls_back_and_preparation_failure_can_resume_in_a_new_process(self):
+        self.plan()
+        self.start()
+        score = self.queue_score()
+        state = self.state()
+        request = self.skip_request("rollback")
+        with closing(connect(self.db)) as db, db:
+            db.execute("""CREATE TRIGGER reject_skip BEFORE INSERT ON operation WHEN NEW.kind='skip'
+                          BEGIN SELECT RAISE(ABORT,'test'); END;""")
+        with self.assertRaises(sqlite3.IntegrityError):
+            accept_skip(*request)
+        self.assertEqual(self.state(), state)
+        with closing(connect(self.db)) as db, db:
+            self.assertEqual(db.execute("SELECT status FROM operation WHERE id=?", (score,)).fetchone()[0], "queued")
+            self.assertEqual(db.execute("SELECT status FROM evaluation").fetchone()[0], "pending")
+            db.execute("DROP TRIGGER reject_skip")
+        operation, accepted = accept_skip(*request)
+        self.assertTrue(accepted)
+        with patch("app.services.advancement.publish_plan_item", side_effect=sqlite3.OperationalError("test")):
+            with self.assertRaises(sqlite3.OperationalError):
+                run_advance(self.db, self.bank, self.session, operation, kind=SKIP)
+        self.assertEqual((self.slots()[0]["outcome"], self.state()["operation"]["status"]), ("skipped", "queued"))
+        cli = [sys.executable, "-X", "utf8", str(ROOT / "scripts/interview.py"), "--db", str(self.db), "--bank", str(self.bank)]
+        resumed = json.loads(subprocess.check_output([*cli, "resume-skip", self.session, operation], timeout=20))
+        self.assertEqual((resumed["current"]["seq"], resumed["progress"]["skipped"]), (2, 1))
+
+    def test_concurrent_clis_skip_only_one_question(self):
+        self.plan()
+        self.start()
+        _, session, turn, revision, key = self.skip_request("cli-skip")
+        cli = [sys.executable, "-X", "utf8", str(ROOT / "scripts/interview.py"), "--db", str(self.db), "--bank", str(self.bank),
+               "skip", session, turn, "--expected-revision", str(revision), "--key", key]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            requests = [pool.submit(subprocess.check_output, cli, timeout=20) for _ in range(2)]
+            operations = [json.loads(request.result())["operation"]["operation_id"] for request in requests]
+        self.assertEqual(operations[0], operations[1])
+        self.assertEqual((self.state()["current"]["seq"], self.state()["progress"]["skipped"]), (2, 1))
+        with closing(connect(self.db, readonly=True)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM operation WHERE kind='skip'").fetchone()[0], 1)

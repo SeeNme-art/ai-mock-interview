@@ -9,7 +9,7 @@ import sqlite3
 from uuid import uuid4
 
 from app.db.business import (
-    OWNER_ID, SessionError, check_business_schema, find_operation, find_replay, find_session,
+    OWNER_ID, SessionError, cancel_active_operations, check_business_schema, find_operation, find_replay, find_session,
     upgrade_business, validate_request_key,
 )
 from app.db.sqlite import canonical_json, connect, sha256
@@ -63,8 +63,7 @@ def accept_abort(path: Path, session_id: str, expected_revision: int, key: str, 
             version = 2
         now, epoch = datetime.now(UTC).isoformat(), session["control_epoch"] + 1
         turn_id = _close_plan(db, session, version, now)
-        db.execute("""UPDATE operation SET status='cancelled',error_code='CANCELLED',updated_at=?
-                      WHERE session_id=? AND status IN ('queued','running','recovery_required')""", (now, session_id))
+        cancel_active_operations(db, session_id, now)
         db.execute("""UPDATE interview_session SET phase='FINISHED',end_reason=?,ended_at=?,
                       revision=revision+1,control_epoch=? WHERE id=?""", (reason, now, epoch, session_id))
         operation_id = uuid4().hex

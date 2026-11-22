@@ -105,3 +105,8 @@ def ensure_session_idle(db: sqlite3.Connection, session: sqlite3.Row) -> None:
     if db.execute("""SELECT 1 FROM operation WHERE session_id=?
                      AND status IN ('queued','running','recovery_required')""", (session["id"],)).fetchone():
         raise SessionError("OPERATION_IN_PROGRESS", "该会话已有待处理操作", current_revision=session["revision"])
+
+
+def cancel_active_operations(db: sqlite3.Connection, session_id: str, now: str) -> None:
+    db.execute("""UPDATE operation SET status='cancelled',error_code='CANCELLED',updated_at=?
+                  WHERE session_id=? AND status IN ('queued','running','recovery_required')""", (now, session_id))

@@ -10,7 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from app.db.business import SessionError
-from app.services.advancement import accept_advance
+from app.services.advancement import SKIP, accept_advance, accept_skip
 from app.services.answers import MAX_ANSWER_CHARS, accept_answer
 from app.services.evaluation import accept_evaluation
 from app.services.finalization import ABORT_REASONS, accept_abort
@@ -85,6 +85,14 @@ def main() -> int:
     resume_advance = actions.add_parser("resume-advance", help="explicitly continue a saved advance operation")
     resume_advance.add_argument("session_id")
     resume_advance.add_argument("operation_id")
+    skip = actions.add_parser("skip", help="skip the current question and prepare the next plan item")
+    skip.add_argument("session_id")
+    skip.add_argument("turn_id")
+    skip.add_argument("--expected-revision", required=True, type=int)
+    skip.add_argument("--key", required=True)
+    resume_skip = actions.add_parser("resume-skip", help="continue a saved skip command after interruption")
+    resume_skip.add_argument("session_id")
+    resume_skip.add_argument("operation_id")
     actions.add_parser("generate-report", help="save or reuse the local report for a finished session").add_argument("session_id")
     report = actions.add_parser("report", help="read a saved report without generating it")
     report.add_argument("session_id")
@@ -125,6 +133,12 @@ def main() -> int:
                     run_advance(args.db, args.bank, args.session_id, operation_id)
             elif args.action == "resume-advance":
                 run_advance(args.db, args.bank, args.session_id, args.operation_id)
+            elif args.action == "skip":
+                operation_id, accepted = accept_skip(args.db, args.session_id, args.turn_id, args.expected_revision, args.key)
+                if accepted:
+                    run_advance(args.db, args.bank, args.session_id, operation_id, kind=SKIP)
+            elif args.action == "resume-skip":
+                run_advance(args.db, args.bank, args.session_id, args.operation_id, kind=SKIP)
             elif args.action == "process-answer":
                 proposer = (lambda _: read_demo_json(args.demo_proposal_file)) if args.demo_proposal_file is not None else None
                 run_answer(args.db, args.session_id, args.operation_id, proposer)

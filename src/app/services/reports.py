@@ -81,7 +81,7 @@ def read_report(path: Path, session_id: str, revision: int | None = None) -> dic
 def _generation_errors(db: sqlite3.Connection, session_id: str) -> dict[int, str]:
     errors = {}
     for row in db.execute("""SELECT kind,error_code,result_refs_json FROM operation
-                             WHERE session_id=? AND owner_id=? AND kind IN ('start','advance')
+                             WHERE session_id=? AND owner_id=? AND kind IN ('start','advance','skip')
                                AND status IN ('succeeded','failed')""", (session_id, OWNER_ID)):
         if row["kind"] == "start":
             if row["error_code"] is not None:
