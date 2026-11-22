@@ -113,7 +113,7 @@ class FirstQuestionTests(unittest.TestCase):
         key = "start-" + session
         self.assertEqual(accept_start(self.db, session, 2, key), (operation, False))
         first = self.run_graph(session, operation)
-        with patch("app.services.first_question.list_questions", side_effect=AssertionError("no new selection")):
+        with patch("app.services.question_delivery.list_questions", side_effect=AssertionError("no new selection")):
             self.assertEqual(self.run_graph(session, operation), first)
             self.assertEqual(accept_start(self.db, session, 2, key), (operation, False))
         with self.assertRaises(SessionError) as error:

@@ -10,6 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from app.db.business import SessionError
+from app.services.advancement import accept_advance
 from app.services.answers import MAX_ANSWER_CHARS, accept_answer
 from app.services.evaluation import accept_evaluation
 from app.services.first_question import accept_start, read_state
@@ -75,6 +76,13 @@ def main() -> int:
     resume_score.add_argument("session_id")
     resume_score.add_argument("operation_id")
     resume_score.add_argument("--demo-assessment-file", type=Path)
+    advance = actions.add_parser("advance", help="prepare the next plan item after the current question closes")
+    advance.add_argument("session_id")
+    advance.add_argument("--expected-revision", required=True, type=int)
+    advance.add_argument("--key", required=True)
+    resume_advance = actions.add_parser("resume-advance", help="explicitly continue a saved advance operation")
+    resume_advance.add_argument("session_id")
+    resume_advance.add_argument("operation_id")
     args = parser.parse_args()
     try:
         if args.action == "answer":
@@ -83,7 +91,7 @@ def main() -> int:
         elif args.action == "state":
             result = read_state(args.db, args.session_id)
         else:
-            from app.workflow.interview import run_answer, run_evaluation, run_first_question
+            from app.workflow.interview import run_advance, run_answer, run_evaluation, run_first_question
 
             if args.action == "start":
                 operation_id, accepted = accept_start(args.db, args.session_id, args.expected_revision, args.key)
@@ -91,6 +99,12 @@ def main() -> int:
                     run_first_question(args.db, args.bank, args.session_id, operation_id)
             elif args.action == "resume-start":
                 run_first_question(args.db, args.bank, args.session_id, args.operation_id)
+            elif args.action == "advance":
+                operation_id, accepted = accept_advance(args.db, args.session_id, args.expected_revision, args.key)
+                if accepted:
+                    run_advance(args.db, args.bank, args.session_id, operation_id)
+            elif args.action == "resume-advance":
+                run_advance(args.db, args.bank, args.session_id, args.operation_id)
             elif args.action == "process-answer":
                 proposer = (lambda _: read_demo_json(args.demo_proposal_file)) if args.demo_proposal_file is not None else None
                 run_answer(args.db, args.session_id, args.operation_id, proposer)

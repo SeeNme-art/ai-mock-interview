@@ -17,6 +17,7 @@ from app.db.business import (
 from app.db.sqlite import canonical_json, connect, sha256
 from app.schemas.scoring import Assessment, TaskType
 from app.services.answers import ExchangeRecord, read_exchanges
+from app.services.question_delivery import finish_if_all_closed
 from app.services.scoring import ScoredAssessment, score_assessment
 
 EVALUATE = "evaluate_answer"
@@ -165,6 +166,7 @@ def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: in
                     version_context, now, refs["evaluation_id"]))
         db.execute("UPDATE turn SET state='closed',closed_at=? WHERE id=?", (now, context.turn_id))
         db.execute("UPDATE plan_item SET status='closed',outcome='answered' WHERE id=?", (context.plan_item_id,))
+        finish_if_all_closed(db, session_id, question["plan_version"], now)
         db.execute("INSERT INTO operation_step VALUES (?,?,?,?,1,?)", (operation_id, EVALUATE, op_status, refs_json, version_context))
         db.execute("UPDATE operation SET status=?,result_refs_json=?,error_code=?,updated_at=? WHERE id=?",
                    (op_status, refs_json, error_code, now, operation_id))
