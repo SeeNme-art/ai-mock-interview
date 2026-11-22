@@ -13,7 +13,7 @@ from .sqlite import apply_migration, check_migration, connect, initialize_or_che
 OWNER_ID = "local"
 MIGRATIONS = tuple(Path(__file__).with_name("migrations") / name for name in (
     "001_init.sql", "002_interview_plan.sql", "003_first_question.sql", "004_evaluation.sql",
-    "005_report_revision.sql",
+    "005_report_revision.sql", "006_session_budget.sql",
 ))
 
 

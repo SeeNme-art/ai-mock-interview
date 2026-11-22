@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from app.db.business import SessionError
 from app.services.advancement import SKIP, accept_advance, accept_skip
 from app.services.answers import MAX_ANSWER_CHARS, accept_answer
+from app.services.budget import configure_budget, read_budget
 from app.services.evaluation import accept_evaluation
 from app.services.finalization import ABORT_REASONS, accept_abort
 from app.services.first_question import accept_start, read_state
@@ -54,6 +55,11 @@ def main() -> int:
     start.add_argument("--expected-revision", required=True, type=int)
     start.add_argument("--key", required=True)
     actions.add_parser("state", help="read already saved progress").add_argument("session_id")
+    actions.add_parser("budget-status", help="read the session model budget and usage").add_argument("session_id")
+    budget = actions.add_parser("configure-budget", help="freeze the session budget in billionths of a US dollar")
+    budget.add_argument("session_id")
+    budget.add_argument("--hard-limit-nanos", type=int, required=True)
+    budget.add_argument("--closing-reserve-nanos", type=int, default=0)
     resume = actions.add_parser("resume", help="continue the current saved operation, or show saved progress")
     resume.add_argument("session_id")
     resume.add_argument("--operation-id")
@@ -120,6 +126,11 @@ def main() -> int:
                                    args.expected_revision, args.key, read_answer(args.answer_file))
         elif args.action == "state":
             result = read_state(args.db, args.session_id)
+        elif args.action == "budget-status":
+            result = read_budget(args.db, args.session_id)
+        elif args.action == "configure-budget":
+            result = configure_budget(args.db, args.session_id, hard_limit_nanos=args.hard_limit_nanos,
+                                      closing_reserve_nanos=args.closing_reserve_nanos)
         elif args.action == "generate-report":
             result = generate_report(args.db, args.session_id)
         elif args.action == "report":
