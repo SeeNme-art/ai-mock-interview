@@ -15,13 +15,15 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
 
 from app import __version__
-from app.config import get_settings
+from app.config import BASE_DIR, get_settings
 from app.core.logging_setup import log_event, setup_logging
 from app.core.tracing import init_tracing, shutdown_tracing
 from app.observability.viewer.routes import router as observe_router
+from app.web.api import business_api, register_errors
+from app.web.workspace import Workspace
+from app.web.pages import assets, pages
 
 
 def create_app() -> FastAPI:
@@ -45,12 +47,24 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="AI 模拟面试系统",
         version=__version__,
-        description="P0：健康检查与本地链路观测；面试业务待后续阶段实现",
+        description="本地面试、健康检查与链路观测",
         lifespan=lifespan,
     )
 
     if observe_enabled:
         app.include_router(observe_router)
+    workspace = Workspace(settings.data_dir, BASE_DIR / "data" / "seeds" / "knowledge_questions.json")
+    register_errors(app)
+    app.include_router(business_api(workspace, settings.observe_db))
+    app.include_router(pages(workspace))
+    app.mount("/workbench", assets(), name="workbench")
+
+    @app.middleware("http")
+    async def prevent_business_caching(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/healthz")
     def healthz() -> dict[str, Any]:
@@ -65,10 +79,6 @@ def create_app() -> FastAPI:
             },
             "error": None,
         }
-
-    @app.get("/", include_in_schema=False)
-    def index() -> RedirectResponse:
-        return RedirectResponse(url="/observe" if observe_enabled else "/healthz")
 
     return app
 

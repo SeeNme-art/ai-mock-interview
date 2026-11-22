@@ -1,7 +1,7 @@
 # AI 模拟面试系统
 
 面向 AI 应用 / Agent 初级岗位求职者的模拟面试项目，目标是根据岗位与个人材料提问、针对回答追问，并生成有证据的分类反馈。首版采用本地浏览器文字界面。
-这是个人学习与求职展示项目。M2 已在本机用合成数据验证知识专项和混合面试，从规划、逐题问答和评分，到结场报告。完整首版进度见[当前交接](docs/项目设计/记录/交接文档.md)。
+这是个人学习与求职展示项目。M3 已在本机增加浏览器工作台，可预览材料、配置计划、答题、查历史和下载报告。示例使用固定评分，个人文本模式保存问答供复盘。完整首版进度见[当前交接](docs/项目设计/记录/交接文档.md)。
 
 > 当前设计：[设计总入口](docs/项目设计/README.md) · [当前交接](docs/项目设计/记录/交接文档.md)
 > 过程证据：[开发日志](docs/项目设计/记录/开发日志.md) · [问题记录](docs/项目设计/记录/问题记录.md) · [实验记录](docs/项目设计/记录/实验记录.md)
@@ -35,10 +35,11 @@
 | M2 第十二批 | DeepSeek 结构化请求、输出上限与用量解析 | [模型适配](docs/项目设计/记录/阶段审阅-M2模型适配.md)离线验证并通过审阅 |
 | M2 第十三批 | 本地向量检索接入正式知识题规划 | [交接](docs/项目设计/记录/交接文档.md)记录 FAISS 路径和 SQLite 回退 |
 | M2 第十四批 | 知识专项与混合面试、项目题依据、预算收尾 | [M2 闭环验收](docs/项目设计/记录/阶段审阅-M2闭环验收.md)提供离线命令行演示 |
+| M3 | 五页浏览器工作台、刷新继续、历史、导出与删除 | [M3 闭环验收](docs/项目设计/记录/阶段审阅-M3浏览器闭环.md)提供 Edge 实测及复现说明 |
 | v2.0 设计 | 五批决策、业务与接口规范、评测计划、记录体系 | 文档已整合；不是产品发布 |
 | M0–M5 | 现状核对 → 小型 CLI 闭环 → 本地 Web → 材料与题库 → 验收交付 | 待按新版计划实施 |
 
-阶段顺序和验收条件见[评测与交付计划](docs/项目设计/05-评测与交付计划.md)。独立的 LangGraph、真实模型和题库检索验证已完成，真实模型接入和 Web 流程仍待开发。
+阶段顺序和验收条件见[评测与交付计划](docs/项目设计/05-评测与交付计划.md)。真实模型的浏览器链路与付费质量验收仍待安排。
 
 ## 环境
 
@@ -49,19 +50,32 @@
 # 新电脑：先安装 Python 3.12，在项目根目录创建环境。
 # 已有 .venv 时直接使用，不重复创建。
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-p0.lock.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-p0.lock.txt -r requirements-langgraph-experiment.lock.txt -r requirements-web.txt
 ```
 
-仓库现有依赖文件分四份，按实际需要安装：
+仓库依赖按用途选择：
 
 | 文件 | 用途 | 何时需要 |
 |---|---|---|
-| `requirements.txt` | fastapi / uvicorn / pydantic | P0 基础与 M0 复核 |
+| `requirements.txt` | fastapi / uvicorn / pydantic / Jinja2 | 基础 Web 环境 |
+| `requirements-web.txt` | Jinja2 / MarkupSafe 固定版本 | 浏览器模板 |
+| `requirements-langgraph-experiment.lock.txt` | LangGraph 等锁定版本 | 运行正式面试步骤 |
 | `requirements-llm.txt` | LangChain 等前期候选依赖 | 模型实验按对应阶段文档安装 |
 | `requirements-embed.txt` | FAISS / FastEmbed / ONNX Runtime | 运行本地题库检索，与 P0 依赖一同安装 |
 | `requirements-voice.txt` | edge-tts / faster-whisper | 后续语音方向，非首版必需 |
 
 ## 跑起来
+
+本机面试用以下命令，从首页选择「使用示例」可以直接体验完整流程。本地向量排序需要另行准备已有 M1 模型和索引。
+
+```powershell
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+[打开本机面试工作台](http://127.0.0.1:8000/) · [打开本机观测台](http://127.0.0.1:8000/observe)
+
+以下命令可另外演示 P0 观测：
 
 ```powershell
 # 在项目根目录执行；使用独立演示库，避免混入旧观测数据。

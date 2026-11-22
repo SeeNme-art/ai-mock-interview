@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ {'history':'练习记录','new':'准备材料','planning':'确认计划','interview':'面试进行中','report':'复盘报告'}[page] }} · 面试工作台</title>
+  <link rel="stylesheet" href="/workbench/workspace.css">
+  <script src="/workbench/workspace.js" defer></script>
+</head>
+<body data-page="{{ page }}" data-session="{{ session_id }}" data-source="{{ source }}">
+  <header class="bar">
+    <div class="wrap header">
+      <a href="/" class="brand"><span class="mark" aria-hidden="true">面</span> 面试工作台</a>
+      <nav aria-label="主导航"><a href="/">练习记录</a><a class="button small" href="/new">新建练习</a></nav>
+    </div>
+  </header>
+  <main class="wrap main">
+    {% if page != 'history' %}
+    <ol class="steps" aria-label="面试步骤">
+      {% for key, label in [('new','准备材料'),('planning','确认计划'),('interview','开始面试'),('report','查看报告')] %}
+      <li {% if page == key %}aria-current="step"{% endif %}><span>{{ loop.index }}</span> {{ label }}</li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+    <p class="status" id="notice" role="status" hidden></p>
+    {% if page == 'history' %}
+      <section class="hero">
+        <div><h1>练习记录</h1><p>选择一场继续，或从一份新材料开始。</p></div>
+        <div class="actions"><a class="button secondary" href="/new?source=example">使用示例</a><a class="button" href="/new">提供材料</a></div>
+      </section>
+      <section id="history-list" class="stack" aria-label="历史会话"></section>
+    {% elif page == 'new' %}
+      <h1>准备材料</h1>
+      <p class="lead">先预览，再确认要用于出题的内容。当前为本机模式，示例提供固定评分，个人材料保留问答供复盘。</p>
+      <div class="layout">
+        <form id="preview-form" class="card stack">
+          <h2>选择材料来源</h2>
+          <label>来源<select name="source"><option value="text" {% if source == 'text' %}selected{% endif %}>粘贴文本</option><option value="example" {% if source == 'example' %}selected{% endif %}>内置示例</option></select></label>
+          <label id="paste-label">材料文本<textarea name="text" maxlength="16000" rows="8" placeholder="岗位描述：开发文档检索服务&#10;技能：Python、SQLite&#10;项目做法：搭建索引并接入问答&#10;项目结果：比较改动前后的召回"></textarea></label>
+          <p class="muted" id="paste-help">可以按提示格式填写，也可以在预览后补充。带标签的行会填入对应字段。</p>
+          <div><button type="submit">预览材料</button></div>
+        </form>
+        <form id="confirm-form" class="card stack" hidden>
+          <h2>核对后确认</h2>
+          <label>岗位描述<textarea name="jd_text" maxlength="8000" rows="3"></textarea></label>
+          <label>技能（用逗号或顿号分隔）<input name="skills"></label>
+          <label>项目名称<input name="name" maxlength="120"></label>
+          <label>亲自完成的工作<textarea name="action" maxlength="1600" rows="3"></textarea></label>
+          <label>项目结果或验证方法<textarea name="result" maxlength="1600" rows="2"></textarea></label>
+          <label>面试类型<select name="mode"><option value="knowledge_only">知识专项</option><option value="mixed">混合面试</option></select></label>
+          <button type="submit">确认材料，进入规划</button>
+        </form>
+      </div>
+    {% elif page == 'planning' %}
+      <h1>确认考察计划</h1>
+      <p class="lead">先确定范围，再开始面试。开始后会保留当时的计划。</p>
+      <div class="layout">
+        <form class="card stack" id="plan-form">
+          <h2>面试设置</h2>
+          <fieldset><legend>考察方向</legend>
+            <label class="choice"><input type="checkbox" name="direction" value="agent" checked> Agent 工程</label>
+            <label class="choice"><input type="checkbox" name="direction" value="rag" checked> RAG 检索</label>
+            <label class="choice"><input type="checkbox" name="direction" value="backend" checked> 后端开发</label>
+          </fieldset>
+          <div class="pair">
+            <label>题数<select name="question_count"><option value="5">5 道题</option><option value="8">8 道题</option></select></label>
+            <label>难度<select name="difficulty"><option value="basic">基础</option><option value="applied">应用</option></select></label>
+          </div>
+          <label class="choice"><input type="checkbox" name="vector"> 用本地向量检索排序</label>
+          <button type="submit">生成计划</button>
+        </form>
+        <section class="card stack" aria-label="当前计划">
+          <h2>计划预览</h2><p id="plan-empty">选择设置后生成计划。</p>
+          <ol class="plan-list" id="plan-items"></ol><div id="plan-hints"></div>
+          <button id="start" disabled>开始面试</button>
+        </section>
+      </div>
+    {% elif page == 'interview' %}
+      <h1>面试进行中</h1>
+      <div class="interview-layout">
+        <section class="card stack">
+          <div class="question-meta" id="question-meta"></div>
+          <h2 id="question">正在读取进度…</h2>
+          <form id="answer-form" class="stack" hidden>
+            <label>你的回答<textarea name="answer" rows="7" maxlength="8000" required placeholder="写下你的思路、实施细节或验证方法"></textarea></label>
+            <div class="actions"><button type="submit">提交回答</button></div>
+          </form>
+          <p id="saved-answer" class="saved" hidden></p>
+          <div class="actions"><button id="continue" hidden>继续处理</button><button id="next" hidden>下一题</button><button id="skip" class="secondary" hidden>跳过整题</button></div>
+        </section>
+        <aside class="card stack">
+          <h2>本场进度</h2>
+          <p id="progress-text">正在读取…</p><progress id="progress" max="5" value="0"></progress>
+          <p class="muted">已经提交的回答会保存。未提交的草稿可能随刷新丢失。</p>
+          <button id="abort" class="secondary" disabled>结束面试</button>
+        </aside>
+      </div>
+    {% else %}
+      <div class="hero compact"><div><h1>复盘报告</h1><p id="report-intro">正在读取报告…</p></div><a id="export" class="button secondary" hidden>下载 Markdown</a></div>
+      <button id="generate-report" hidden>生成报告</button>
+      <section id="report-summary" class="pair" aria-label="分类评分"></section>
+      <section id="report-items" class="stack" aria-label="逐题回顾"></section>
+    {% endif %}
+  </main>
+</body>
+</html>

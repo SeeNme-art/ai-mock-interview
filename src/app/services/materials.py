@@ -24,6 +24,7 @@ class MaterialDraft:
     input_mode: InputMode
     expires_at: datetime
     initial_material_json: str = field(repr=False)
+    web_source: str | None = None
 
 
 class DraftExpired(ValueError):
@@ -56,10 +57,10 @@ def validate_material(material: MaterialInput) -> None:
             raise ValueError("材料字段含不可显示字符，请清理后再确认")
 
 
-def start_draft(material: MaterialInput, input_mode: InputMode) -> MaterialDraft:
+def start_draft(material: MaterialInput, input_mode: InputMode, *, web_source: str | None = None) -> MaterialDraft:
     validate_material(material)
     return MaterialDraft(uuid4().hex, input_mode, datetime.now(UTC) + DRAFT_TTL,
-                         material.model_dump_json())
+                         material.model_dump_json(), web_source)
 
 
 def _profile_snapshot(material: MaterialInput, draft: MaterialDraft) -> dict:
@@ -103,10 +104,11 @@ def confirm_material(path: Path, draft_id: str, key: str, confirmation: Confirma
         session_id = uuid4().hex
         db.execute("""INSERT INTO interview_session (
                           id, owner_id, draft_id, confirmation_key, confirmation_hash, input_mode,
-                          mode, jd_text, resume_profile_json, created_at
-                      ) VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                          mode, jd_text, resume_profile_json, policy_snapshot_json, created_at
+                      ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                    (session_id, OWNER_ID, draft_id, key, digest, draft.input_mode, confirmation.mode,
-                    material.jd_text, canonical_json(_profile_snapshot(material, draft)), now.isoformat()))
+                    material.jd_text, canonical_json(_profile_snapshot(material, draft)),
+                    canonical_json({"web_source": draft.web_source} if draft.web_source else {}), now.isoformat()))
         return session_id
 
 
