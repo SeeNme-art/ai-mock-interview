@@ -27,7 +27,7 @@ from app.services.planning import rebuild_plan
 from app.services.reports import generate_report, read_report
 
 try:
-    from app.workflow.interview import run_advance, run_answer, run_evaluation, run_finalize, run_first_question
+    from app.workflow.interview import resume_interview, run_advance, run_answer, run_evaluation, run_finalize, run_first_question
 except ModuleNotFoundError as exc:
     if exc.name not in {"langgraph", "langsmith"}:
         raise
@@ -240,11 +240,25 @@ class FinalizationTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 run_finalize(self.db, self.session, operation, self.assessment)
         self.assertEqual((self.state()["phase"], self.state()["operation"]["status"]), ("FINISHED", "succeeded"))
+        self.assertEqual(self.state()["resume"], {"kind": "finalize", "operation_id": operation, "reason": "report_pending"})
         self.assertEqual(read_report(self.db, self.session)["status"], "pending")
         evaluator = Mock(side_effect=AssertionError("resume must not re-score"))
-        run_finalize(self.db, self.session, operation, evaluator)
+        with patch("app.workflow.interview._run_interview", side_effect=AssertionError("only the report remains")):
+            restored = resume_interview(self.db, self.bank, self.session, operation_id=operation, evaluator=evaluator)
         evaluator.assert_not_called()
+        self.assertIsNone(restored["resume"])
         self.assertEqual(read_report(self.db, self.session)["knowledge_score"], 75)
+
+    def test_unified_resume_finalizes_a_queued_end_and_reuses_its_report(self):
+        self.plan()
+        self.start()
+        self.respond()
+        operation, _ = self.abort()
+        self.assertEqual(self.state()["resume"], {"kind": "finalize", "operation_id": operation, "reason": "queued"})
+        saved = resume_interview(self.db, self.bank, self.session, operation_id=operation, evaluator=self.assessment)
+        self.assertEqual((saved["phase"], saved["progress"]["scored"], saved["resume"]), ("FINISHED", 1, None))
+        self.assertEqual(resume_interview(self.db, self.bank, self.session), saved)
+        self.assertEqual(read_report(self.db, self.session)["revision_no"], 1)
 
     def test_material_only_v1_session_can_abort_and_finalize_after_upgrade(self):
         self.plan(version=1, with_plan=False)

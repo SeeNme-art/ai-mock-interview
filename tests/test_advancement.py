@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -27,7 +28,7 @@ from app.services.planning import rebuild_plan
 from app.services.reports import generate_report
 
 try:
-    from app.workflow.interview import run_advance, run_answer, run_evaluation
+    from app.workflow.interview import resume_interview, run_advance, run_answer, run_evaluation
 except ModuleNotFoundError as exc:
     if exc.name not in {"langgraph", "langsmith"}:
         raise
@@ -435,3 +436,103 @@ class AdvancementTests(unittest.TestCase):
         self.assertEqual((self.state()["current"]["seq"], self.state()["progress"]["skipped"]), (2, 1))
         with closing(connect(self.db, readonly=True)) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM operation WHERE kind='skip'").fetchone()[0], 1)
+
+    def test_cold_cli_resume_routes_each_saved_operation_to_its_existing_step(self):
+        self.plan()
+        cli = [sys.executable, "-X", "utf8", str(ROOT / "scripts/interview.py"), "--db", str(self.db), "--bank", str(self.bank)]
+
+        def call(*args):
+            return json.loads(subprocess.check_output([*cli, *args], timeout=20))
+
+        def assert_target(kind, operation_id):
+            state = call("state", self.session)
+            self.assertEqual(state["resume"], {"kind": kind, "operation_id": operation_id, "reason": "queued"})
+            return state
+
+        start, _ = accept_start(self.db, self.session, self.state()["revision"], "resume-start")
+        assert_target("start", start)
+        first = call("resume", self.session, "--operation-id", start)
+        self.assertEqual(first["current"]["seq"], 1)
+        self.assertEqual(call("resume", self.session), first)
+
+        answer = self.respond()
+        queued = assert_target("answer", answer)
+        self.assertEqual(queued["current"]["answer"], ANSWER)
+        failure = subprocess.run([*cli, "resume", self.session], text=True, encoding="utf-8", capture_output=True, timeout=20)
+        self.assertEqual(failure.returncode, 1)
+        self.assertEqual(json.loads(failure.stderr)["code"], "CONFIGURATION_ERROR")
+        self.assertEqual(self.state(), queued)
+
+        proposal = self.db.with_name("proposal.json")
+        proposal.write_text(json.dumps({"should_probe": False, "reason": "合成样例"}), encoding="utf-8")
+        processed = call("resume", self.session, "--demo-proposal-file", str(proposal))
+        self.assertEqual(processed["operation"]["decision"], "score_pending")
+        self.assertEqual(call("resume", self.session), processed)
+
+        score, _ = accept_evaluation(self.db, self.session, answer, processed["revision"], "resume-score")
+        assert_target("evaluate_answer", score)
+        with closing(connect(self.db, readonly=True)) as db:
+            rubric, task = db.execute("SELECT rubric_snapshot_json,task_type FROM turn").fetchone()
+        context = SimpleNamespace(rubric_snapshot=rubric, task_type=task,
+                                  exchanges=[SimpleNamespace(id=first["current"]["exchange_id"])])
+        assessment = self.db.with_name("assessment.json")
+        assessment.write_text(json.dumps(self.assessment(context)), encoding="utf-8")
+        scored = call("resume", self.session, "--demo-assessment-file", str(assessment))
+        self.assertEqual((scored["progress"]["answered"], scored["progress"]["scored"], scored["resume"]), (1, 1, None))
+        self.assertEqual(call("resume", self.session, "--operation-id", score), scored)
+
+        advance, _ = self.queue("resume-advance")
+        assert_target("advance", advance)
+        self.assertEqual(call("resume", self.session)["current"]["seq"], 2)
+        skip, _ = accept_skip(*self.skip_request("resume-skip"))
+        assert_target("skip", skip)
+        after = call("resume", self.session)
+        self.assertEqual((after["current"]["seq"], after["progress"]["skipped"], after["progress"]["scored"]), (3, 1, 1))
+        with closing(connect(self.db, readonly=True)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM evaluation").fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT count(*) FROM exchange WHERE answer_text=?", (ANSWER,)).fetchone()[0], 1)
+
+    def test_resume_refuses_stale_revision_other_operation_and_old_control_epoch(self):
+        self.plan()
+        original = self.state()
+        self.assertEqual(resume_interview(self.db, self.bank, self.session), original)
+        start, _ = accept_start(self.db, self.session, original["revision"], "resume-start")
+        for options, code in (({"expected_revision": original["revision"]}, "STALE_REVISION"),
+                              ({"operation_id": "another-operation"}, "ILLEGAL_ACTION")):
+            with self.assertRaises(SessionError) as refused:
+                resume_interview(self.db, self.bank, self.session, **options)
+            self.assertEqual(refused.exception.code, code)
+        with self.assertRaises(SessionError) as inaccessible:
+            resume_interview(self.db, self.bank, "another-session", operation_id=start)
+        self.assertEqual(inaccessible.exception.code, "RESOURCE_NOT_FOUND")
+        with closing(connect(self.db)) as db, db:
+            db.execute("UPDATE interview_session SET control_epoch=control_epoch+1 WHERE id=?", (self.session,))
+        state = resume_interview(self.db, self.bank, self.session, operation_id=start)
+        self.assertIsNone(state["resume"])
+        self.assertIsNone(state["current"])
+        self.assertEqual(state["operation"]["status"], "queued")
+
+    def test_concurrent_resumes_publish_one_question_and_create_no_extra_operation(self):
+        self.plan()
+        start, _ = accept_start(self.db, self.session, self.state()["revision"], "resume-start")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            work = [pool.submit(resume_interview, self.db, self.bank, self.session, operation_id=start) for _ in range(2)]
+            views = [job.result() for job in work]
+        self.assertEqual(views[0], views[1])
+        self.assertEqual((views[0]["current"]["seq"], views[0]["resume"]), (1, None))
+        with closing(connect(self.db, readonly=True)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM turn").fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT count(*) FROM operation WHERE kind='start'").fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT count(*) FROM operation_step WHERE operation_id=?", (start,)).fetchone()[0], 1)
+
+    def test_resume_after_normal_end_only_reads_saved_state(self):
+        self.plan()
+        self.start()
+        self.close_current()
+        self.retire([q.id for q in self.seed.questions])
+        self.advance("all-missing")
+        state = self.state()
+        self.assertEqual((state["phase"], state["resume"]), ("FINISHED", None))
+        self.assertEqual(resume_interview(self.db, self.bank, self.session), state)
+        with closing(connect(self.db, readonly=True)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM report_revision").fetchone()[0], 0)

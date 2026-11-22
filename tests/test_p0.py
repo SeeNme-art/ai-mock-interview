@@ -187,15 +187,27 @@ with sqlite3.connect(settings.observe_db) as conn:
                        OBSERVE_DB=str(location / "data" / "observe.db"),
                        OBSERVE_UI=str(observe_ui).lower(), OBSERVE_STORE_IO="false")
             # 不读取开发者 .env；P0 测试仅使用临时目录和合成内容。
-            program = (
-                "from app import config; config.get_settings=lambda: config.Settings(_env_file=None); "
-                "import uvicorn; uvicorn.run('app.main:app',host='127.0.0.1',port=" + str(port) +
-                ",access_log=False)"
-            )
+            program = """
+import sys
+from threading import Thread
+
+import uvicorn
+from app import config
+
+config.get_settings = lambda: config.Settings(_env_file=None)
+server = uvicorn.Server(uvicorn.Config("app.main:app", host="127.0.0.1", port=int(sys.argv[1]), access_log=False))
+
+def stop_on_eof():
+    sys.stdin.buffer.read()
+    server.should_exit = True
+
+Thread(target=stop_on_eof, daemon=True).start()
+server.run()
+"""
             opener = build_opener(ProxyHandler({}))
             with (location / "server.log").open("wb") as output:
-                process = subprocess.Popen([sys.executable, "-c", program], cwd=ROOT, env=env,
-                                           stdout=output, stderr=subprocess.STDOUT)
+                process = subprocess.Popen([sys.executable, "-c", program, str(port)], cwd=ROOT, env=env,
+                                           stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT)
                 try:
                     base = f"http://127.0.0.1:{port}"
                     deadline = time.monotonic() + 15
@@ -227,8 +239,14 @@ with sqlite3.connect(settings.observe_db) as conn:
                             opener.open(base + "/observe", timeout=2)
                         self.assertEqual(caught.exception.code, 404)
                 finally:
-                    process.terminate()
-                    process.wait(timeout=10)
+                    # Wait for the actual server's lifespan teardown before Windows releases its database.
+                    process.stdin.close()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=10)
+                        raise
 
     def test_real_http_health_and_observe(self) -> None:
         self.run_server(True)

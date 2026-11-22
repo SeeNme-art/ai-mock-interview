@@ -99,6 +99,21 @@ def prepare_first_question(path: Path, bank: Path, session_id: str, operation_id
         return refs
 
 
+def _resume_view(db: sqlite3.Connection, session: sqlite3.Row, operation: sqlite3.Row | None, version: int) -> dict | None:
+    if operation is None or operation["expected_epoch"] != session["control_epoch"]:
+        return None
+    kind, status = operation["kind"], operation["status"]
+    if session["phase"] != ("FINISHED" if kind == "finalize" else "ACTIVE"):
+        return None
+    target = {"operation_id": operation["operation_id"], "kind": kind}
+    if status == "queued":
+        return {**target, "reason": "queued"}
+    if kind == "finalize" and status == "succeeded":
+        if version < 5 or db.execute("SELECT 1 FROM report_revision WHERE session_id=? LIMIT 1", (session["id"],)).fetchone() is None:
+            return {**target, "reason": "report_pending"}
+    return None
+
+
 def read_state(path: Path, session_id: str) -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
@@ -106,7 +121,7 @@ def read_state(path: Path, session_id: str) -> dict:
         session = find_session(db, session_id)
         operation = current = None
         if version >= 2:
-            operation = db.execute("""SELECT id AS operation_id,kind,status,error_code,result_refs_json FROM operation
+            operation = db.execute("""SELECT id AS operation_id,kind,status,error_code,result_refs_json,expected_epoch FROM operation
                          WHERE session_id=? AND owner_id=? AND kind IN ('start','answer','evaluate_answer','advance','skip','finalize')
                          ORDER BY expected_epoch DESC LIMIT 1""", (session_id, OWNER_ID)).fetchone()
         if version >= 3:
@@ -122,6 +137,7 @@ def read_state(path: Path, session_id: str) -> dict:
             del visible["answer"], visible["answered_at"]
         operation_view = dict(operation) if operation is not None else None
         if operation_view is not None:
+            del operation_view["expected_epoch"]
             refs = json.loads(operation_view.pop("result_refs_json") or "{}")
             if operation_view["kind"] == "answer" and "decision" in refs:
                 operation_view["decision"] = refs["decision"]
@@ -140,4 +156,5 @@ def read_state(path: Path, session_id: str) -> dict:
             "plan_version": session["plan_version"] if version >= 2 else 0,
             "end_reason": session["end_reason"], "ended_at": session["ended_at"],
             "progress": session_progress(db, session, version), "current": visible, "operation": operation_view,
+            "resume": _resume_view(db, session, operation, version),
         }

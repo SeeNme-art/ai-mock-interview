@@ -7,13 +7,16 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 from langsmith import tracing_context
 
-from app.db.business import operation_epoch
+from app.db.business import SessionError, operation_epoch
 from app.services.advancement import ADVANCE, SKIP, STEP as ADVANCE_STEP, advance_plan
 from app.services.evaluation import EVALUATE, DemoEvaluator, process_evaluation
 from app.services.finalization import FINALIZE, finalize_interview
-from app.services.first_question import prepare_first_question, start_epoch
+from app.services.first_question import prepare_first_question, read_state
 from app.services.probing import DemoProposer, process_answer
 from app.services.reports import generate_report
+
+
+InterviewCommand = Literal["start", "answer", "evaluate_answer", "advance", "skip", "finalize"]
 
 
 class InterviewState(TypedDict, total=False):
@@ -25,8 +28,7 @@ class InterviewState(TypedDict, total=False):
     evaluation_id: str | None
 
 
-def _run_interview(path: Path, initial: InterviewState,
-                   command: Literal["start", "answer", "evaluate_answer", "advance", "skip", "finalize"], *,
+def _run_interview(path: Path, initial: InterviewState, command: InterviewCommand, *,
                    bank: Path | None = None, proposer: DemoProposer | None = None,
                    evaluator: DemoEvaluator | None = None) -> InterviewState:
     def prepare(state: InterviewState) -> dict:
@@ -67,34 +69,59 @@ def _run_interview(path: Path, initial: InterviewState,
         return builder.compile().invoke(initial)
 
 
-def run_first_question(path: Path, bank: Path, session_id: str, operation_id: str) -> InterviewState:
+def _run_operation(path: Path, session_id: str, operation_id: str, kind: InterviewCommand, *,
+                   bank: Path | None = None, proposer: DemoProposer | None = None,
+                   evaluator: DemoEvaluator | None = None) -> InterviewState:
     initial = {"session_id": session_id, "operation_id": operation_id,
-               "control_epoch": start_epoch(path, session_id, operation_id)}
-    return _run_interview(path, initial, "start", bank=bank)
+               "control_epoch": operation_epoch(path, session_id, operation_id, kind)}
+    result = _run_interview(path, initial, kind, bank=bank, proposer=proposer, evaluator=evaluator)
+    if kind == FINALIZE:
+        generate_report(path, session_id)
+    return result
+
+
+def run_first_question(path: Path, bank: Path, session_id: str, operation_id: str) -> InterviewState:
+    return _run_operation(path, session_id, operation_id, "start", bank=bank)
 
 
 def run_answer(path: Path, session_id: str, operation_id: str, proposer: DemoProposer | None = None) -> InterviewState:
-    initial = {"session_id": session_id, "operation_id": operation_id,
-               "control_epoch": operation_epoch(path, session_id, operation_id, "answer")}
-    return _run_interview(path, initial, "answer", proposer=proposer)
+    return _run_operation(path, session_id, operation_id, "answer", proposer=proposer)
 
 
 def run_evaluation(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None) -> InterviewState:
-    initial = {"session_id": session_id, "operation_id": operation_id,
-               "control_epoch": operation_epoch(path, session_id, operation_id, EVALUATE)}
-    return _run_interview(path, initial, EVALUATE, evaluator=evaluator)
+    return _run_operation(path, session_id, operation_id, EVALUATE, evaluator=evaluator)
 
 
 def run_advance(path: Path, bank: Path, session_id: str, operation_id: str, *,
                 kind: Literal["advance", "skip"] = ADVANCE) -> InterviewState:
-    initial = {"session_id": session_id, "operation_id": operation_id,
-               "control_epoch": operation_epoch(path, session_id, operation_id, kind)}
-    return _run_interview(path, initial, kind, bank=bank)
+    return _run_operation(path, session_id, operation_id, kind, bank=bank)
 
 
 def run_finalize(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None) -> InterviewState:
-    initial = {"session_id": session_id, "operation_id": operation_id,
-               "control_epoch": operation_epoch(path, session_id, operation_id, FINALIZE)}
-    result = _run_interview(path, initial, FINALIZE, evaluator=evaluator)
-    generate_report(path, session_id)
-    return result
+    return _run_operation(path, session_id, operation_id, FINALIZE, evaluator=evaluator)
+
+
+def resume_interview(path: Path, bank: Path, session_id: str, *, expected_revision: int | None = None,
+                     operation_id: str | None = None, proposer: DemoProposer | None = None,
+                     evaluator: DemoEvaluator | None = None) -> dict:
+    """Resume only work already registered for this session."""
+    if expected_revision is not None and (type(expected_revision) is not int or expected_revision < 1):
+        raise SessionError("INVALID_INPUT", "会话 revision 须为正整数")
+    if not path.is_file():
+        raise SessionError("RESOURCE_NOT_FOUND", "找不到可访问的会话")
+    state = read_state(path, session_id)
+    revision = state["revision"]
+    if expected_revision is not None and revision != expected_revision:
+        raise SessionError("STALE_REVISION", "会话进度已更新，请刷新后再继续", current_revision=revision)
+    current = state["operation"]
+    if operation_id is not None and (current is None or current["operation_id"] != operation_id):
+        raise SessionError("ILLEGAL_ACTION", "该会话的当前操作与指定操作不匹配", current_revision=revision)
+    target = state["resume"]
+    if target is None:
+        return state
+    if target["reason"] == "report_pending":
+        generate_report(path, session_id)
+    else:
+        _run_operation(path, session_id, target["operation_id"], target["kind"], bank=bank,
+                       proposer=proposer, evaluator=evaluator)
+    return read_state(path, session_id)

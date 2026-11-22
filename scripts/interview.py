@@ -54,9 +54,15 @@ def main() -> int:
     start.add_argument("--expected-revision", required=True, type=int)
     start.add_argument("--key", required=True)
     actions.add_parser("state", help="read already saved progress").add_argument("session_id")
-    resume = actions.add_parser("resume-start", help="explicitly continue a saved start command")
+    resume = actions.add_parser("resume", help="continue the current saved operation, or show saved progress")
     resume.add_argument("session_id")
-    resume.add_argument("operation_id")
+    resume.add_argument("--operation-id")
+    resume.add_argument("--expected-revision", type=int)
+    resume.add_argument("--demo-proposal-file", type=Path)
+    resume.add_argument("--demo-assessment-file", type=Path)
+    resume_start = actions.add_parser("resume-start", help="explicitly continue a saved start command")
+    resume_start.add_argument("session_id")
+    resume_start.add_argument("operation_id")
     answer = actions.add_parser("answer", help="read UTF-8 text from stdin or --answer-file and save it")
     answer.add_argument("session_id")
     answer.add_argument("turn_id")
@@ -118,6 +124,13 @@ def main() -> int:
             result = generate_report(args.db, args.session_id)
         elif args.action == "report":
             result = read_report(args.db, args.session_id, args.revision)
+        elif args.action == "resume":
+            from app.workflow.interview import resume_interview
+
+            proposer = (lambda _: read_demo_json(args.demo_proposal_file)) if args.demo_proposal_file is not None else None
+            evaluator = (lambda _: read_demo_json(args.demo_assessment_file)) if args.demo_assessment_file is not None else None
+            result = resume_interview(args.db, args.bank, args.session_id, expected_revision=args.expected_revision,
+                                      operation_id=args.operation_id, proposer=proposer, evaluator=evaluator)
         else:
             from app.workflow.interview import run_advance, run_answer, run_evaluation, run_finalize, run_first_question
 
