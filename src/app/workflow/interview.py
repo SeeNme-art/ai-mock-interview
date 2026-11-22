@@ -12,6 +12,7 @@ from app.services.advancement import ADVANCE, SKIP, STEP as ADVANCE_STEP, advanc
 from app.services.evaluation import EVALUATE, DemoEvaluator, process_evaluation
 from app.services.finalization import FINALIZE, finalize_interview
 from app.services.first_question import prepare_first_question, read_state
+from app.services.model_steps import PROMPT_VERSION, InterviewModel
 from app.services.probing import DemoProposer, process_answer
 from app.services.reports import generate_report
 
@@ -30,17 +31,19 @@ class InterviewState(TypedDict, total=False):
 
 def _run_interview(path: Path, initial: InterviewState, command: InterviewCommand, *,
                    bank: Path | None = None, proposer: DemoProposer | None = None,
-                   evaluator: DemoEvaluator | None = None) -> InterviewState:
+                   evaluator: DemoEvaluator | None = None, model_version: str = "local-demo-v1") -> InterviewState:
     def prepare(state: InterviewState) -> dict:
         if bank is None:
             raise RuntimeError("首题节点缺少审核题库配置")
         return prepare_first_question(path, bank, state["session_id"], state["operation_id"], state["control_epoch"])
 
     def decide(state: InterviewState) -> dict:
-        return process_answer(path, state["session_id"], state["operation_id"], state["control_epoch"], proposer)
+        return process_answer(path, state["session_id"], state["operation_id"], state["control_epoch"], proposer,
+                              model_version=model_version)
 
     def evaluate(state: InterviewState) -> dict:
-        return process_evaluation(path, state["session_id"], state["operation_id"], state["control_epoch"], evaluator)
+        return process_evaluation(path, state["session_id"], state["operation_id"], state["control_epoch"], evaluator,
+                                  model_version=model_version)
 
     def advance(state: InterviewState) -> dict:
         if bank is None:
@@ -49,7 +52,8 @@ def _run_interview(path: Path, initial: InterviewState, command: InterviewComman
                             kind=SKIP if command == SKIP else ADVANCE)
 
     def finalize(state: InterviewState) -> dict:
-        return finalize_interview(path, state["session_id"], state["operation_id"], state["control_epoch"], evaluator)
+        return finalize_interview(path, state["session_id"], state["operation_id"], state["control_epoch"], evaluator,
+                                  model_version=model_version)
 
     builder = StateGraph(InterviewState)
     builder.add_node("prepare_first_question", prepare)
@@ -71,10 +75,18 @@ def _run_interview(path: Path, initial: InterviewState, command: InterviewComman
 
 def _run_operation(path: Path, session_id: str, operation_id: str, kind: InterviewCommand, *,
                    bank: Path | None = None, proposer: DemoProposer | None = None,
-                   evaluator: DemoEvaluator | None = None) -> InterviewState:
+                   evaluator: DemoEvaluator | None = None, model: InterviewModel | None = None) -> InterviewState:
+    if model is not None:
+        if proposer is not None or evaluator is not None:
+            raise SessionError("INVALID_INPUT", "样例和模型入口只能选一个")
+        if kind == "answer":
+            proposer = lambda context: model.propose(session_id, operation_id, context)
+        elif kind in (EVALUATE, FINALIZE):
+            evaluator = lambda context: model.evaluate(session_id, operation_id, context)
     initial = {"session_id": session_id, "operation_id": operation_id,
                "control_epoch": operation_epoch(path, session_id, operation_id, kind)}
-    result = _run_interview(path, initial, kind, bank=bank, proposer=proposer, evaluator=evaluator)
+    result = _run_interview(path, initial, kind, bank=bank, proposer=proposer, evaluator=evaluator,
+                            model_version=PROMPT_VERSION if model is not None else "local-demo-v1")
     if kind == FINALIZE:
         generate_report(path, session_id)
     return result
@@ -84,12 +96,14 @@ def run_first_question(path: Path, bank: Path, session_id: str, operation_id: st
     return _run_operation(path, session_id, operation_id, "start", bank=bank)
 
 
-def run_answer(path: Path, session_id: str, operation_id: str, proposer: DemoProposer | None = None) -> InterviewState:
-    return _run_operation(path, session_id, operation_id, "answer", proposer=proposer)
+def run_answer(path: Path, session_id: str, operation_id: str, proposer: DemoProposer | None = None, *,
+               model: InterviewModel | None = None) -> InterviewState:
+    return _run_operation(path, session_id, operation_id, "answer", proposer=proposer, model=model)
 
 
-def run_evaluation(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None) -> InterviewState:
-    return _run_operation(path, session_id, operation_id, EVALUATE, evaluator=evaluator)
+def run_evaluation(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None, *,
+                   model: InterviewModel | None = None) -> InterviewState:
+    return _run_operation(path, session_id, operation_id, EVALUATE, evaluator=evaluator, model=model)
 
 
 def run_advance(path: Path, bank: Path, session_id: str, operation_id: str, *,
@@ -97,13 +111,14 @@ def run_advance(path: Path, bank: Path, session_id: str, operation_id: str, *,
     return _run_operation(path, session_id, operation_id, kind, bank=bank)
 
 
-def run_finalize(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None) -> InterviewState:
-    return _run_operation(path, session_id, operation_id, FINALIZE, evaluator=evaluator)
+def run_finalize(path: Path, session_id: str, operation_id: str, evaluator: DemoEvaluator | None = None, *,
+                 model: InterviewModel | None = None) -> InterviewState:
+    return _run_operation(path, session_id, operation_id, FINALIZE, evaluator=evaluator, model=model)
 
 
 def resume_interview(path: Path, bank: Path, session_id: str, *, expected_revision: int | None = None,
                      operation_id: str | None = None, proposer: DemoProposer | None = None,
-                     evaluator: DemoEvaluator | None = None) -> dict:
+                     evaluator: DemoEvaluator | None = None, model: InterviewModel | None = None) -> dict:
     """Resume only work already registered for this session."""
     if expected_revision is not None and (type(expected_revision) is not int or expected_revision < 1):
         raise SessionError("INVALID_INPUT", "会话 revision 须为正整数")
@@ -123,5 +138,5 @@ def resume_interview(path: Path, bank: Path, session_id: str, *, expected_revisi
         generate_report(path, session_id)
     else:
         _run_operation(path, session_id, target["operation_id"], target["kind"], bank=bank,
-                       proposer=proposer, evaluator=evaluator)
+                       proposer=proposer, evaluator=evaluator, model=model)
     return read_state(path, session_id)

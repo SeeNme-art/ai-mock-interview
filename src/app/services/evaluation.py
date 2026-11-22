@@ -130,7 +130,9 @@ def score_context(context: EvaluationContext, evaluator: DemoEvaluator) -> tuple
         result = score_assessment(Assessment.model_validate(evaluator(context)), task_type=context.task_type,
                                   rubric_version=rubric["rubric_version"], applicable_dimensions=rubric["applicable_dimensions"],
                                   answers=answers, source_refs=source_ids)
-    except SessionError:
+    except SessionError as exc:
+        if exc.code in {"BUDGET_EXHAUSTED", "MODEL_UNAVAILABLE", "MODEL_REQUEST_REJECTED", "OUTPUT_INVALID"}:
+            return None, exc.code
         raise
     except OSError:
         return None, "MODEL_UNAVAILABLE"
@@ -155,7 +157,8 @@ def store_evaluation(db: sqlite3.Connection, context: EvaluationContext, evaluat
     return status, version_context
 
 
-def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: int, evaluator: DemoEvaluator | None) -> dict:
+def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: int, evaluator: DemoEvaluator | None, *,
+                       model_version: str = "local-demo-v1") -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
         context, refs = _load_work(db, session_id, operation_id, epoch)
@@ -174,12 +177,19 @@ def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: in
             raise SessionError("ILLEGAL_ACTION", "评分依据已更新，请读取当前进度")
         now = datetime.now(UTC).isoformat()
         question = json.loads(context.question_snapshot)
-        eval_status, version_context = store_evaluation(db, context, refs["evaluation_id"], result, error_code, now)
+        eval_status, version_context = store_evaluation(db, context, refs["evaluation_id"], result, error_code, now,
+                                                       evaluator_version=model_version)
         op_status = "succeeded" if result is not None else "failed"
         refs_json = canonical_json({**refs, "evaluation_status": eval_status})
         db.execute("UPDATE turn SET state='closed',closed_at=? WHERE id=?", (now, context.turn_id))
         db.execute("UPDATE plan_item SET status='closed',outcome='answered' WHERE id=?", (context.plan_item_id,))
-        finish_if_all_closed(db, session_id, question["plan_version"], now)
+        if error_code == "BUDGET_EXHAUSTED":
+            db.execute("""UPDATE plan_item SET status='closed',outcome='unanswered'
+                          WHERE session_id=? AND plan_version=? AND status='pending'""", (session_id, question["plan_version"]))
+            db.execute("""UPDATE interview_session SET phase='FINISHED',end_reason='budget_exhausted',ended_at=?
+                          WHERE id=? AND phase='ACTIVE'""", (now, session_id))
+        else:
+            finish_if_all_closed(db, session_id, question["plan_version"], now)
         db.execute("INSERT INTO operation_step VALUES (?,?,?,?,1,?)", (operation_id, EVALUATE, op_status, refs_json, version_context))
         db.execute("UPDATE operation SET status=?,result_refs_json=?,error_code=?,updated_at=? WHERE id=?",
                    (op_status, refs_json, error_code, now, operation_id))

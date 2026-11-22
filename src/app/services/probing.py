@@ -88,7 +88,13 @@ def _decide(context: ProbeContext, proposer: DemoProposer | None) -> tuple[Probe
         raise SessionError("CONFIGURATION_ERROR", "本批需显式提供本地追问样例才能处理未达上限的轮次")
     try:
         proposal = _validate_proposal(proposer(context), context)
-    except SessionError:
+    except SessionError as exc:
+        if exc.code == "BUDGET_EXHAUSTED":
+            return None, "probe_budget_exhausted", exc.code
+        if exc.code in {"MODEL_UNAVAILABLE", "MODEL_REQUEST_REJECTED"}:
+            return None, "provider_unavailable", exc.code
+        if exc.code == "OUTPUT_INVALID":
+            return None, "invalid_proposal", exc.code
         raise
     except OSError:
         return None, "provider_unavailable", "MODEL_UNAVAILABLE"
@@ -97,7 +103,8 @@ def _decide(context: ProbeContext, proposer: DemoProposer | None) -> tuple[Probe
     return proposal, "probe" if proposal.should_probe else "no_probe", None
 
 
-def process_answer(path: Path, session_id: str, operation_id: str, epoch: int, proposer: DemoProposer | None) -> dict:
+def process_answer(path: Path, session_id: str, operation_id: str, epoch: int, proposer: DemoProposer | None, *,
+                   model_version: str = "local-demo-v1") -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
         context, saved = _load_work(db, session_id, operation_id, epoch)
@@ -130,7 +137,7 @@ def process_answer(path: Path, session_id: str, operation_id: str, epoch: int, p
                 "decision": decision, "decision_reason": reason_code}
         result["refs"] = refs
         now = datetime.now(UTC).isoformat()
-        version = {"proposer": None if reason_code == "round_limit" else "local-demo-v1"}
+        version = {"proposer": None if reason_code == "round_limit" else model_version}
         db.execute("INSERT INTO operation_step VALUES (?,?,'succeeded',?,1,?)",
                    (operation_id, STEP, canonical_json(result), canonical_json(version)))
         db.execute("UPDATE operation SET status='succeeded',result_refs_json=?,error_code=?,updated_at=? WHERE id=?",

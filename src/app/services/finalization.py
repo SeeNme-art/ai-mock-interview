@@ -105,7 +105,7 @@ def _load_work(db: sqlite3.Connection, session_id: str, operation_id: str, epoch
 
 
 def finalize_interview(path: Path, session_id: str, operation_id: str, epoch: int,
-                       evaluator: DemoEvaluator | None) -> dict:
+                       evaluator: DemoEvaluator | None, *, model_version: str = "local-demo-v1") -> dict:
     with closing(connect(path, readonly=True)) as db, db:
         db.execute("BEGIN")
         context, refs, done = _load_work(db, session_id, operation_id, epoch, check_business_schema(db))
@@ -134,7 +134,7 @@ def finalize_interview(path: Path, session_id: str, operation_id: str, epoch: in
                 db.execute("""INSERT INTO evaluation(id,turn_id,status,model_context_json,created_at,updated_at)
                               VALUES (?,?,'pending','{}',?,?)""", (evaluation_id, context.turn_id, now, now))
             status, version_context = store_evaluation(db, context, evaluation_id, result, error_code, now,
-                                                       evaluator_version="local-demo-v1" if evaluator else None)
+                                                       evaluator_version=model_version if evaluator else None)
             refs = {**refs, "evaluation_id": evaluation_id, "evaluation_status": status}
         saved = canonical_json(refs)
         db.execute("INSERT INTO operation_step VALUES (?,?,'succeeded',?,1,?)",

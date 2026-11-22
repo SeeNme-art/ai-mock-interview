@@ -151,10 +151,11 @@ class AdvancementTests(unittest.TestCase):
         self.assertEqual([row["task_type"] for row in planned], ["knowledge", "project", "knowledge", "project", "knowledge"])
         self.start()
         self.close_current()
-        self.advance("mixed")
+        with patch("app.services.question_delivery._project_question", return_value=None):
+            self.advance("mixed")
         state = self.state()
         self.assertEqual(state["current"]["seq"], 3)
-        self.assertEqual(state["operation"]["unavailable"], [{"seq": 2, "reason_code": "MODEL_UNAVAILABLE"}])
+        self.assertEqual(state["operation"]["unavailable"], [{"seq": 2, "reason_code": "QUESTION_UNAVAILABLE"}])
         self.assertEqual(state["progress"]["failed"], 1)
         self.assertEqual(self.slots()[1]["outcome"], "generation_failed")
         self.assertEqual([row["id"] for row in self.slots()], [row["id"] for row in planned])
@@ -253,13 +254,15 @@ class AdvancementTests(unittest.TestCase):
         before = self.state()
         with closing(connect(self.db)) as db, db:
             db.execute("CREATE TRIGGER reject_next BEFORE INSERT ON exchange BEGIN SELECT RAISE(ABORT,'test'); END;")
-        with self.assertRaises(sqlite3.IntegrityError):
-            run_advance(self.db, self.bank, self.session, op)
+        with patch("app.services.question_delivery._project_question", return_value=None):
+            with self.assertRaises(sqlite3.IntegrityError):
+                run_advance(self.db, self.bank, self.session, op)
         self.assertEqual(self.state(), before)
         self.assertEqual(self.slots()[1]["status"], "pending")
         with closing(connect(self.db)) as db, db:
             db.execute("DROP TRIGGER reject_next")
-        run_advance(self.db, self.bank, self.session, op)
+        with patch("app.services.question_delivery._project_question", return_value=None):
+            run_advance(self.db, self.bank, self.session, op)
         self.assertEqual(self.state()["current"]["seq"], 3)
 
     def test_late_or_cross_session_advance_cannot_publish_a_turn(self):
@@ -387,15 +390,32 @@ class AdvancementTests(unittest.TestCase):
     def test_skip_handles_unavailable_following_slots_and_report_preserves_the_reasons(self):
         self.plan(mixed=True)
         self.start()
-        self.skip("skip-before-project")
-        self.assertEqual(self.state()["current"]["seq"], 3)
-        self.assertEqual(self.state()["operation"]["unavailable"], [{"seq": 2, "reason_code": "MODEL_UNAVAILABLE"}])
-        self.skip("skip-second-knowledge")
+        with patch("app.services.question_delivery._project_question", return_value=None):
+            self.skip("skip-before-project")
+            self.assertEqual(self.state()["current"]["seq"], 3)
+            self.assertEqual(self.state()["operation"]["unavailable"], [{"seq": 2, "reason_code": "QUESTION_UNAVAILABLE"}])
+            self.skip("skip-second-knowledge")
         self.skip("skip-final-knowledge")
         report = generate_report(self.db, self.session)
         self.assertEqual((report["kind"], report["counts"]["skipped"], report["counts"]["system_failed"]), ("summary", 3, 2))
         self.assertEqual([item["generation_error_code"] for item in report["items"] if item["outcome"] == "generation_failed"],
-                         ["MODEL_UNAVAILABLE", "MODEL_UNAVAILABLE"])
+                         ["QUESTION_UNAVAILABLE", "QUESTION_UNAVAILABLE"])
+
+    def test_mixed_project_questions_use_confirmed_fields_and_separate_scoring(self):
+        self.plan(mixed=True)
+        self.start()
+        for seq in range(1, 6):
+            state = self.state()
+            self.assertEqual(state["current"]["seq"], seq)
+            self.close_current()
+            if seq < 5:
+                self.advance(f"after-mixed-{seq}")
+        report = generate_report(self.db, self.session)
+        self.assertEqual(report["category_counts"], {"knowledge": 3, "project": 2})
+        self.assertEqual((report["knowledge_score"], report["project_score"]), (75, 75))
+        facts = [item["question_snapshot"] for item in report["items"] if item["task_type"] == "project"]
+        self.assertEqual([(item["project_ref"], item["project_field"], item["project_quote"]) for item in facts],
+                         [("p_1", "action", "实现检索分块"), ("p_1", "result", "以固定查询对比结果")])
 
     def test_failed_skip_acceptance_rolls_back_and_preparation_failure_can_resume_in_a_new_process(self):
         self.plan()

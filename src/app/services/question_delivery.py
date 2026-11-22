@@ -6,12 +6,17 @@ from pathlib import Path
 import sqlite3
 from uuid import uuid4
 
-from app.db.sqlite import canonical_json
+from app.db.sqlite import canonical_json, sha256
 from app.kb.seed import prompt_key
 from app.kb.store import list_questions
 from app.schemas.scoring import CONTENT_DIMENSIONS
 
 RUBRIC_VERSION = "knowledge-v1"
+PROJECT_RUBRIC_VERSION = "project-v1"
+PROJECT_PROMPTS = {
+    "action": "这项工作里你亲自实现了哪一部分？请具体说明做法。",
+    "result": "你是怎样验证这个结果的？请说明证据或衡量方法。",
+}
 
 
 def _choose_question(db: sqlite3.Connection, bank: Path, slot: sqlite3.Row) -> tuple[dict | None, str | None]:
@@ -43,19 +48,42 @@ def _choose_question(db: sqlite3.Connection, bank: Path, slot: sqlite3.Row) -> t
     return fallback, "planned_question_unavailable"
 
 
+def _project_question(db: sqlite3.Connection, slot: sqlite3.Row) -> dict | None:
+    profile, = db.execute("SELECT resume_profile_json FROM interview_session WHERE id=?", (slot["session_id"],)).fetchone()
+    project = next((item for item in json.loads(profile)["projects"] if item["id"] == slot["project_ref"]), None)
+    field = slot["project_field"]
+    fact = project.get(field) if project is not None and field in PROJECT_PROMPTS else None
+    if not isinstance(fact, str) or not fact.strip():
+        return None
+    quote = fact[:160]
+    content = f"你在项目材料里写到「{quote}」。{PROJECT_PROMPTS[field]}"
+    return {
+        "content": content, "content_hash": sha256(content), "objective": slot["topic"],
+        "dimension": slot["dimension"], "difficulty": slot["difficulty"], "sources": [],
+        "applicable_dimensions": json.loads(slot["scoring_targets_json"]),
+        "answer_points": [], "acceptable_alternatives": [], "common_errors": [],
+        "project_ref": slot["project_ref"], "project_field": field, "project_quote": quote,
+    }
+
+
 def _store_question(db: sqlite3.Connection, slot: sqlite3.Row, question: dict, reason: str | None, now: str) -> dict:
     turn_id, exchange_id = uuid4().hex, uuid4().hex
-    snapshot = {"id": question["id"], "revision": question["revision"], "content_hash": question["content_hash"],
+    task_type = slot["task_type"]
+    snapshot = {"id": question.get("id"), "revision": question.get("revision"), "content_hash": question["content_hash"],
                 "objective": question["objective"], "plan_version": slot["plan_version"]}
+    if task_type == "project":
+        snapshot.update({key: question[key] for key in ("project_ref", "project_field", "project_quote")})
+        snapshot["selection_method"] = "confirmed_project_template"
     if reason is None and slot["form_reason"] == "verified_bank_faiss":
         snapshot["selection_method"] = "faiss"
     rubric_keys = ("applicable_dimensions", "answer_points", "acceptable_alternatives", "common_errors")
-    rubric = {"task_type": "knowledge", "rubric_version": RUBRIC_VERSION,
+    rubric = {"task_type": task_type, "rubric_version": PROJECT_RUBRIC_VERSION if task_type == "project" else RUBRIC_VERSION,
               **{key: question[key] for key in rubric_keys}}
     db.execute("""INSERT INTO turn (id,session_id,plan_item_id,task_type,dimension,difficulty,generation_method,
                   fallback_reason,state,question_snapshot_json,source_snapshot_json,rubric_snapshot_json,created_at)
-                  VALUES (?,?,?,'knowledge',?,?,'original',?,'awaiting_answer',?,?,?,?)""",
-               (turn_id, slot["session_id"], slot["id"], question["dimension"], question["difficulty"], reason,
+                  VALUES (?,?,?,?,?,?,?,?,'awaiting_answer',?,?,?,?)""",
+               (turn_id, slot["session_id"], slot["id"], task_type, question["dimension"], question["difficulty"],
+                "generated" if task_type == "project" else "original", reason,
                 canonical_json(snapshot), canonical_json(question["sources"]), canonical_json(rubric), now))
     db.execute("INSERT INTO exchange (id,turn_id,round_no,question_text) VALUES (?,?,0,?)",
                (exchange_id, turn_id, question["content"]))
@@ -65,14 +93,13 @@ def _store_question(db: sqlite3.Connection, slot: sqlite3.Row, question: dict, r
 
 def publish_plan_item(db: sqlite3.Connection, bank: Path, slot: sqlite3.Row, now: str) -> tuple[dict, str | None]:
     if slot["task_type"] == "project":
-        error_code = "MODEL_UNAVAILABLE"
+        question, reason = _project_question(db, slot), None
     else:
         question, reason = _choose_question(db, bank, slot)
-        if question is not None:
-            return _store_question(db, slot, question, reason, now), None
-        error_code = "QUESTION_UNAVAILABLE"
+    if question is not None:
+        return _store_question(db, slot, question, reason, now), None
     db.execute("UPDATE plan_item SET status='closed',outcome='generation_failed' WHERE id=?", (slot["id"],))
-    return {"turn_id": None, "exchange_id": None}, error_code
+    return {"turn_id": None, "exchange_id": None}, "QUESTION_UNAVAILABLE"
 
 
 def finish_if_all_closed(db: sqlite3.Connection, session_id: str, version: int, now: str) -> bool:

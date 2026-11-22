@@ -263,9 +263,8 @@ class SessionBudgetTests(unittest.TestCase):
         self.configure(limit=1000)
         before = read_state(self.db, self.session)
         transport = Mock()
-        with self.assertRaises(SessionError) as blocked:
-            run_answer(self.db, self.session, self.operation, lambda _: self.invoke(transport))
-        self.assertEqual(blocked.exception.code, "BUDGET_EXHAUSTED")
+        run_answer(self.db, self.session, self.operation, lambda _: self.invoke(transport))
         transport.assert_not_called()
-        self.assertEqual(read_state(self.db, self.session), before)
-        self.assertEqual(before["current"]["answer"], BODY)
+        after = read_state(self.db, self.session)
+        self.assertEqual(after["operation"]["decision_reason"], "probe_budget_exhausted")
+        self.assertEqual((before["current"]["answer"], after["current"]["answer"]), (BODY, BODY))
