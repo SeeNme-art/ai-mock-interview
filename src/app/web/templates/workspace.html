@@ -31,7 +31,7 @@
       <section id="history-list" class="stack" aria-label="历史会话"></section>
     {% elif page == 'new' %}
       <h1>准备材料</h1>
-      <p class="lead">先预览，再确认要用于出题的内容。当前为本机模式，示例提供固定评分，个人材料保留问答供复盘。</p>
+      <p class="lead">先预览，再确认要用于出题的内容。示例提供固定评分，个人材料默认在本机保留问答供复盘。</p>
       <div class="layout">
         <form id="preview-form" class="card stack">
           <h2>选择材料来源</h2>
@@ -58,6 +58,13 @@
           <label>亲自完成的工作<textarea name="action" maxlength="1600" rows="3"></textarea></label>
           <label>项目结果或验证方法<textarea name="result" maxlength="1600" rows="2"></textarea></label>
           <label>面试类型<select name="mode"><option value="knowledge_only">知识专项</option><option value="mixed">混合面试</option></select></label>
+          {% if cloud_enabled %}
+          <fieldset id="cloud-assistance" hidden>
+            <legend>实验性 DeepSeek 追问与点评</legend>
+            <p class="muted">开启后，会向 DeepSeek 发送本题相关的已确认材料片段和本题问答，消耗配置的 API 额度。请先检查材料和回答中的个人信息。</p>
+            <label class="choice"><input name="cloud_assistance" type="checkbox"> 我同意本场使用 DeepSeek</label>
+          </fieldset>
+          {% endif %}
           <button type="submit">确认材料，进入规划</button>
         </form>
       </div>

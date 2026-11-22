@@ -53,7 +53,7 @@ def create_app() -> FastAPI:
 
     if observe_enabled:
         app.include_router(observe_router)
-    workspace = Workspace(settings.data_dir, BASE_DIR / "data" / "seeds" / "knowledge_questions.json")
+    workspace = Workspace(settings.data_dir, BASE_DIR / "data" / "seeds" / "knowledge_questions.json", settings=settings)
     register_errors(app)
     app.include_router(business_api(workspace, settings.observe_db))
     app.include_router(pages(workspace))

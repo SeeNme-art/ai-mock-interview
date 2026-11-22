@@ -10,7 +10,7 @@ import sqlite3
 from uuid import uuid4
 
 from app.db.business import OWNER_ID, SessionError, cancel_active_operations, check_business_schema, find_session, upgrade_business
-from app.db.sqlite import connect, sha256
+from app.db.sqlite import canonical_json, connect, sha256
 from app.services.question_delivery import session_progress
 from app.services.reports import read_report
 
@@ -69,10 +69,14 @@ def clone(path: Path, session_id: str, key: str) -> str:
                   "input_mode", "jd_text", "resume_profile_json", "policy_snapshot_json"]
         if version >= 2:
             fields.append("difficulty")
+        settings = dict(source)
+        policy = json.loads(settings["policy_snapshot_json"])
+        policy.pop("cloud_assistance", None)
+        settings["policy_snapshot_json"] = canonical_json(policy)
         # Column names are fixed here, never taken from a request.
         db.execute(f"""INSERT INTO interview_session(id,draft_id,confirmation_key,confirmation_hash,created_at,{','.join(fields)})
                        VALUES (?,?,?,?,?,{','.join('?' for _ in fields)})""",
-                   (fresh, uuid4().hex, receipt_key, sha256(session_id), datetime.now(UTC).isoformat(), *(source[field] for field in fields)))
+                   (fresh, uuid4().hex, receipt_key, sha256(session_id), datetime.now(UTC).isoformat(), *(settings[field] for field in fields)))
         return fresh
 
 

@@ -79,10 +79,11 @@ def _profile_snapshot(material: MaterialInput, draft: MaterialDraft) -> dict:
 
 
 def confirm_material(path: Path, draft_id: str, key: str, confirmation: Confirmation,
-                     *, draft: MaterialDraft | None = None) -> str:
+                     *, draft: MaterialDraft | None = None, cloud_assistance: bool = False) -> str:
     validate_request_key(key)
     validate_material(confirmation.material)
-    digest = sha256(canonical_json({"draft_id": draft_id, **confirmation.model_dump(mode="json")}))
+    cloud_policy = {"cloud_assistance": True} if cloud_assistance else {}
+    digest = sha256(canonical_json({"draft_id": draft_id, **confirmation.model_dump(mode="json"), **cloud_policy}))
     path.parent.mkdir(parents=True, exist_ok=True)
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
@@ -102,13 +103,14 @@ def confirm_material(path: Path, draft_id: str, key: str, confirmation: Confirma
             raise DraftExpired("材料预览已过期或已丢失，请重新提供材料")
         material = confirmation.material
         session_id = uuid4().hex
+        policy = {"web_source": draft.web_source} if draft.web_source else {}
         db.execute("""INSERT INTO interview_session (
                           id, owner_id, draft_id, confirmation_key, confirmation_hash, input_mode,
                           mode, jd_text, resume_profile_json, policy_snapshot_json, created_at
                       ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                    (session_id, OWNER_ID, draft_id, key, digest, draft.input_mode, confirmation.mode,
                     material.jd_text, canonical_json(_profile_snapshot(material, draft)),
-                    canonical_json({"web_source": draft.web_source} if draft.web_source else {}), now.isoformat()))
+                    canonical_json({**policy, **cloud_policy}), now.isoformat()))
         return session_id
 
 

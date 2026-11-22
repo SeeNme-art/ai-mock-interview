@@ -39,12 +39,13 @@ class InterviewModel:
         self._output_limit = max_output_tokens
         self._attempts = retries + 1
 
-    def _request(self, session_id: str, operation_id: str, step: str, role: str, prompt: str, context: dict) -> dict:
+    def _request(self, session_id: str, operation_id: str, step: str, role: str, prompt: str,
+                 context: dict, turn_id: str) -> dict:
         for attempt in range(1, self._attempts + 1):
             try:
                 return self._gateway.invoke_json(session_id, operation_id, step, role=role, attempt_no=attempt,
                                                  system_prompt=prompt, user_prompt=canonical_json(context),
-                                                 max_output_tokens=self._output_limit)
+                                                 max_output_tokens=self._output_limit, turn_id=turn_id)
             except SessionError as exc:
                 if exc.code not in {"MODEL_UNAVAILABLE", "OUTPUT_INVALID"} or attempt == self._attempts:
                     raise
@@ -56,7 +57,7 @@ class InterviewModel:
             "exchanges": [asdict(item) for item in context.exchanges],
             "asked_questions": context.asked_questions,
             "reference_points": context.reference_points,
-        })
+        }, context.turn_id)
 
     def evaluate(self, session_id: str, operation_id: str, context: EvaluationContext) -> dict:
         return self._request(session_id, operation_id, "evaluate_answer", "evaluate", _EVALUATE_PROMPT, {
@@ -65,4 +66,4 @@ class InterviewModel:
             "question": json.loads(context.question_snapshot),
             "rubric": json.loads(context.rubric_snapshot),
             "sources": json.loads(context.source_snapshot),
-        })
+        }, context.turn_id)

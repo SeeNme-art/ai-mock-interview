@@ -25,6 +25,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        hide_input_in_errors=True,
     )
 
     # ---------- 基础 ----------
@@ -47,6 +48,10 @@ class Settings(BaseSettings):
     llm_model_main: str = "deepseek-flash"
     llm_timeout_s: int = 30
     llm_max_retries: int = Field(default=1, ge=0, le=1)  # 供上层重试策略使用，适配层每次只发送一次
+    llm_web_enabled: bool = False
+    llm_web_total_nanos: int | None = Field(default=None, gt=0, le=10**15)
+    llm_web_session_nanos: int | None = Field(default=None, gt=0, le=10**15)
+    llm_web_turn_nanos: int | None = Field(default=None, gt=0, le=10**15)
 
     # ---------- 预算（P2 起启用） ----------
     max_tokens_per_session: int | None = Field(default=None, gt=0)
@@ -55,6 +60,12 @@ class Settings(BaseSettings):
     def metadata_only(self) -> "Settings":
         if self.observe_store_io:
             raise ValueError("P0 supports metadata-only telemetry; OBSERVE_STORE_IO must be false")
+        if self.llm_web_enabled:
+            limits = self.llm_web_turn_nanos, self.llm_web_session_nanos, self.llm_web_total_nanos
+            if any(limit is None for limit in limits) or not limits[0] <= limits[1] <= limits[2]:
+                raise ValueError("Cloud mode needs explicit turn <= session <= total budget limits")
+            if not self.deepseek_api_key.strip() or self.llm_model_main != "deepseek-flash" or self.llm_timeout_s < 1:
+                raise ValueError("Cloud mode needs a credential, deepseek-flash and a positive timeout")
         return self
 
     @property

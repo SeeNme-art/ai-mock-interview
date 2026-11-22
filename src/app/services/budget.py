@@ -15,6 +15,7 @@ from app.db.business import SessionError, check_business_schema, find_session, u
 from app.db.sqlite import canonical_json, connect
 
 BUDGET_SCHEMA = 6
+CLOUD_BUDGET_SCHEMA = 8
 MAX_TOKENS = 10_000_000
 MAX_RATE_NANOS = 1_000_000_000
 MAX_CAP_NANOS = 10**15
@@ -65,6 +66,16 @@ class PriceSnapshot:
                 + usage.cached_input_tokens * cached_rate + usage.output_tokens * self.output_nanos_per_token)
 
 
+@dataclass(frozen=True)
+class CloudLimits:
+    total_limit_nanos: int
+    turn_limit_nanos: int
+
+    def __post_init__(self) -> None:
+        _number(self.total_limit_nanos, 1, MAX_CAP_NANOS, "工作台总额度")
+        _number(self.turn_limit_nanos, 1, self.total_limit_nanos, "单题额度")
+
+
 def _account(db: sqlite3.Connection, session_id: str) -> sqlite3.Row | None:
     return db.execute("SELECT * FROM budget_account WHERE session_id=?", (session_id,)).fetchone()
 
@@ -93,22 +104,30 @@ def read_budget(path: Path, session_id: str) -> dict:
         return _view_budget(db, session_id, account)
 
 
-def configure_budget(path: Path, session_id: str, *, hard_limit_nanos: int, closing_reserve_nanos: int = 0) -> dict:
+def configure_budget(path: Path, session_id: str, *, hard_limit_nanos: int, closing_reserve_nanos: int = 0,
+                     cloud_limits: CloudLimits | None = None) -> dict:
     _number(hard_limit_nanos, 1, MAX_CAP_NANOS, "会话额度")
     _number(closing_reserve_nanos, 0, hard_limit_nanos, "收尾预留")
     if not path.is_file():
         raise SessionError("RESOURCE_NOT_FOUND", "找不到可访问的会话")
+    version_needed = CLOUD_BUDGET_SCHEMA if cloud_limits else BUDGET_SCHEMA
     with closing(connect(path)) as db:
         while True:
             with db:
                 db.execute("BEGIN IMMEDIATE")
                 version = check_business_schema(db)
                 find_session(db, session_id)
-                if version < BUDGET_SCHEMA:
+                if version < version_needed:
                     # Each next backup must observe the last committed schema.
                     upgrade_business(db, path, version + 1)
-                    if version + 1 < BUDGET_SCHEMA:
+                    if version + 1 < version_needed:
                         continue
+                if cloud_limits is not None:
+                    limits = cloud_limits.total_limit_nanos, cloud_limits.turn_limit_nanos
+                    db.execute("INSERT OR IGNORE INTO cloud_budget(id,total_limit_nanos,turn_limit_nanos) VALUES (1,?,?)", limits)
+                    configured = db.execute("SELECT total_limit_nanos,turn_limit_nanos FROM cloud_budget WHERE id=1").fetchone()
+                    if tuple(configured) != limits:
+                        raise SessionError("BUDGET_ALREADY_CONFIGURED", "此数据库的工作台总额度和单题额度已冻结")
                 account = _account(db, session_id)
                 if account is None:
                     db.execute("""INSERT INTO budget_account(session_id,currency,hard_limit_nanos,closing_reserve_nanos,updated_at)
@@ -121,7 +140,8 @@ def configure_budget(path: Path, session_id: str, *, hard_limit_nanos: int, clos
 
 
 def _reserve_call(path: Path, session_id: str, operation_id: str, step_key: str, attempt_no: int, *,
-                  role: str, price: PriceSnapshot, estimated_input_tokens: int, max_output_tokens: int) -> str:
+                  role: str, price: PriceSnapshot, estimated_input_tokens: int, max_output_tokens: int,
+                  cloud_limits: CloudLimits | None = None, turn_id: str | None = None) -> str:
     _number(attempt_no, 1, 2, "尝试编号")
     _number(estimated_input_tokens, 1, MAX_TOKENS, "输入 token 估算")
     _number(max_output_tokens, 1, MAX_TOKENS, "输出 token 上限")
@@ -155,6 +175,19 @@ def _reserve_call(path: Path, session_id: str, operation_id: str, step_key: str,
             ceiling -= account["closing_reserve_nanos"]
         if account["spent_nanos"] + account["reserved_nanos"] + reserve > ceiling:
             raise SessionError("BUDGET_EXHAUSTED", "模型调用超出当前会话可用额度")
+        if cloud_limits is not None:
+            cloud = db.execute("SELECT * FROM cloud_budget WHERE id=1").fetchone() if version >= CLOUD_BUDGET_SCHEMA else None
+            if cloud is None or (cloud["total_limit_nanos"], cloud["turn_limit_nanos"]) != (
+                    cloud_limits.total_limit_nanos, cloud_limits.turn_limit_nanos):
+                raise SessionError("CONFIGURATION_ERROR", "工作台总额度与已冻结配置不匹配")
+            if cloud["spent_nanos"] + cloud["reserved_nanos"] + reserve > cloud["total_limit_nanos"]:
+                raise SessionError("BUDGET_EXHAUSTED", "模型调用超出工作台总额度")
+            if not db.execute("SELECT 1 FROM turn WHERE id=? AND session_id=?", (turn_id, session_id)).fetchone():
+                raise SessionError("ILLEGAL_ACTION", "云端调用需要本场已发布题目")
+            committed = db.execute("""SELECT COALESCE(SUM(COALESCE(actual_nanos,reserved_nanos)),0)
+                                      FROM call_attempt WHERE session_id=? AND turn_id=?""", (session_id, turn_id)).fetchone()[0]
+            if committed + reserve > cloud["turn_limit_nanos"]:
+                raise SessionError("TURN_BUDGET_EXHAUSTED", "模型调用超出本题可用额度")
         now, call_id = datetime.now(UTC).isoformat(), uuid4().hex
         db.execute("""INSERT INTO call_attempt(id,session_id,operation_id,step_key,attempt_no,role,status,
                           estimated_input_tokens,max_output_tokens,reserved_nanos,pricing_snapshot_json,started_at)
@@ -163,6 +196,9 @@ def _reserve_call(path: Path, session_id: str, operation_id: str, step_key: str,
                     max_output_tokens, reserve, canonical_json(asdict(price)), now))
         db.execute("UPDATE budget_account SET reserved_nanos=reserved_nanos+?,updated_at=? WHERE session_id=?",
                    (reserve, now, session_id))
+        if cloud_limits is not None:
+            db.execute("UPDATE call_attempt SET turn_id=? WHERE id=?", (turn_id, call_id))
+            db.execute("UPDATE cloud_budget SET reserved_nanos=reserved_nanos+? WHERE id=1", (reserve,))
         return call_id
 
 
@@ -193,14 +229,19 @@ def settle_call(path: Path, session_id: str, call_id: str, usage: Usage | None) 
                    (usage.input_tokens, usage.output_tokens, usage.cached_input_tokens, charge, now, call_id))
         db.execute("""UPDATE budget_account SET spent_nanos=spent_nanos+?,reserved_nanos=reserved_nanos-?,updated_at=?
                       WHERE session_id=?""", (charge, row["reserved_nanos"], now, session_id))
+        if version >= CLOUD_BUDGET_SCHEMA and row["turn_id"] is not None:
+            db.execute("UPDATE cloud_budget SET spent_nanos=spent_nanos+?,reserved_nanos=reserved_nanos-? WHERE id=1",
+                       (charge, row["reserved_nanos"]))
 
 
 def invoke_budgeted(path: Path, session_id: str, operation_id: str, step_key: str, *, role: str, attempt_no: int,
                     price: PriceSnapshot, estimated_input_tokens: int, max_output_tokens: int,
-                    send_once: Callable[[int], tuple[Result, Usage | None]]) -> Result:
+                    send_once: Callable[[int], tuple[Result, Usage | None]],
+                    cloud_limits: CloudLimits | None = None, turn_id: str | None = None) -> Result:
     """Reserve before sending, then settle from metered usage or hold funds when usage is unknown."""
     call_id = _reserve_call(path, session_id, operation_id, step_key, attempt_no, role=role, price=price,
-                            estimated_input_tokens=estimated_input_tokens, max_output_tokens=max_output_tokens)
+                            estimated_input_tokens=estimated_input_tokens, max_output_tokens=max_output_tokens,
+                            cloud_limits=cloud_limits, turn_id=turn_id)
     try:
         result, usage = send_once(max_output_tokens)
         if usage is not None and not isinstance(usage, Usage):

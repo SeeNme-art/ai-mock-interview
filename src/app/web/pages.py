@@ -27,7 +27,8 @@ def pages(workspace: Workspace) -> APIRouter:
 
     def render(request: Request, name: str, session_id: str = "", source: str = ""):
         return templates.TemplateResponse(request, "workspace.html",
-                                          {"page": name, "session_id": session_id, "source": source}, headers=headers)
+                                          {"page": name, "session_id": session_id, "source": source,
+                                           "cloud_enabled": workspace.cloud_enabled}, headers=headers)
 
     def session_page(request: Request, name: str, session_id: str):
         if not workspace.db.is_file():

@@ -81,6 +81,10 @@ async function newPage() {
   let inputVersion = 0;
   const showSource = () => {
     const mode = form.elements.source.value;
+    if (confirmation.elements.cloud_assistance) {
+      confirmation.elements.cloud_assistance.checked = false;
+      byId("cloud-assistance").hidden = mode === "example";
+    }
     byId("paste-label").hidden = mode !== "text";
     byId("paste-help").hidden = byId("paste-label").hidden;
     byId("file-fields").hidden = mode !== "file";
@@ -138,7 +142,8 @@ async function newPage() {
       result: field("result") || null}] : [];
     const material = {jd_text: field("jd_text") || null, skills: field("skills").split(/[,，、]/).map(item => item.trim()).filter(Boolean),
       projects: project};
-    const result = await api("/sessions", "POST", {draft_id: draft.draft_id, material, mode: field("mode")});
+    const result = await api("/sessions", "POST", {draft_id: draft.draft_id, material, mode: field("mode"),
+      cloud_assistance: confirmation.elements.cloud_assistance?.checked ?? false});
     location.assign(view("planning", result.session_id));
   }));
 }
@@ -181,13 +186,15 @@ async function interviewPage() {
   const form = byId("answer-form");
   let state;
   function render(result) {
+    if (state && result.revision < state.revision) return;
     state = result;
     if (state.phase === "FINISHED") { location.replace(view("report")); return; }
     const turn = state.current;
-    const working = state.resume || (turn?.state === "processing" && state.operation?.decision === "score_pending");
+    const working = state.resume;
     const waiting = turn?.state === "awaiting_answer";
     byId("question-meta").textContent = turn ? `第 ${turn.seq} 题 · ${types[turn.task_type]}${turn.round_no ? " · 追问 " + turn.round_no : ""}` : "";
-    byId("question").textContent = turn?.question ?? (working ? "正在准备题目" : "当前题已处理");
+    byId("question").textContent = turn?.state === "processing" ? "正在处理已保存的回答" :
+      turn?.question ?? (working ? "正在准备题目" : "当前题已处理");
     byId("progress").max = state.progress.planned || 5;
     byId("progress").value = state.progress.closed;
     byId("progress-text").textContent = `已处理 ${state.progress.closed} / ${state.progress.planned} 题`;
@@ -203,8 +210,8 @@ async function interviewPage() {
   async function refresh() { render(await api(base + "/state")); }
   async function settle() {
     await refresh();
-    for (let count = 0; count < 12 && state.phase === "ACTIVE" && state.resume; count++) {
-      await new Promise(resolve => setTimeout(resolve, 250));
+    for (let count = 0; count < 60 && state.phase === "ACTIVE" && state.resume; count++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
       await refresh();
     }
   }
@@ -245,7 +252,7 @@ async function reportPage() {
     const pending = report.status === "pending";
     generate.hidden = !pending;
     const intro = pending ? "报告待生成。可继续完成收尾。" :
-      `${report.source === "example" ? "示例固定评分。 " : ""}已答 ${report.counts.answered} 题，` +
+      `${report.source === "example" ? "示例固定评分。 " : report.cloud_assistance ? "实验性 DeepSeek 点评。 " : ""}已答 ${report.counts.answered} 题，` +
       `有效评分 ${report.counts.scored} 题${report.counts.skipped ? "，跳过 " + report.counts.skipped + " 题" : ""}。`;
     byId("report-intro").textContent = intro;
     if (pending) return true;

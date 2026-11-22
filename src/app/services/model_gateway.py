@@ -9,7 +9,7 @@ from typing import Callable
 
 from app.config import Settings
 from app.db.business import SessionError
-from app.services.budget import PriceSnapshot, Usage, invoke_budgeted
+from app.services.budget import CloudLimits, PriceSnapshot, Usage, invoke_budgeted
 
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_OUTPUT_TOKENS = 393_216
@@ -97,7 +97,7 @@ def _read_content(status: int, payload: dict | None, model: str) -> dict:
 
 class DeepSeekGateway:
     def __init__(self, path: Path, settings: Settings, price: PriceSnapshot, *, transport: Transport = _post_chat,
-                 max_input_tokens: int | None = None):
+                 max_input_tokens: int | None = None, cloud_limits: CloudLimits | None = None):
         api_key = settings.deepseek_api_key.strip()
         if not api_key or not api_key.isascii() or not api_key.isprintable() or any(char.isspace() for char in api_key):
             raise SessionError("CONFIGURATION_ERROR", "DeepSeek 凭据缺失或格式无效")
@@ -109,9 +109,11 @@ class DeepSeekGateway:
         self._timeout_s = settings.llm_timeout_s
         self._transport = transport
         self._max_input = max_input_tokens
+        self._cloud_limits = cloud_limits
 
     def invoke_json(self, session_id: str, operation_id: str, step_key: str, *, role: str,
-                    attempt_no: int, system_prompt: str, user_prompt: str, max_output_tokens: int) -> dict:
+                    attempt_no: int, system_prompt: str, user_prompt: str, max_output_tokens: int,
+                    turn_id: str | None = None) -> dict:
         if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= MAX_OUTPUT_TOKENS:
             raise SessionError("INVALID_INPUT", "模型请求需要合法的输出 token 上限")
         if any(not isinstance(prompt, str) or not prompt.strip() for prompt in (system_prompt, user_prompt)):
@@ -139,6 +141,7 @@ class DeepSeekGateway:
         status, payload, usage = invoke_budgeted(
             self._path, session_id, operation_id, step_key, role=role, attempt_no=attempt_no, price=self._price,
             estimated_input_tokens=estimated_input, max_output_tokens=max_output_tokens, send_once=send_once,
+            cloud_limits=self._cloud_limits, turn_id=turn_id,
         )
         if usage is not None and usage.output_tokens > max_output_tokens:
             raise SessionError("OUTPUT_INVALID", "供应商返回的输出用量超过请求上限")

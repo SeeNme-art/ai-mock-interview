@@ -60,6 +60,7 @@ class Preview(Input):
 
 class Confirm(Confirmation):
     draft_id: str
+    cloud_assistance: bool = False
 
 
 class Expected(Input):
@@ -167,9 +168,12 @@ def business_api(workspace: Workspace, observe: Path) -> APIRouter:
 
     @router.post("/sessions", status_code=201)
     def create_session(body: Confirm, key: Key):
+        draft = workspace.draft(body.draft_id)
+        if body.cloud_assistance and (not workspace.cloud_enabled or (draft and draft.web_source == "example")):
+            raise SessionError("CONFIGURATION_ERROR", "当前材料模式无法使用云端点评")
         try:
             session_id = confirm_material(workspace.db, body.draft_id, key, Confirmation(material=body.material, mode=body.mode),
-                                          draft=workspace.draft(body.draft_id))
+                                          draft=draft, cloud_assistance=body.cloud_assistance)
         except DraftExpired as exc:
             raise SessionError("DRAFT_EXPIRED", str(exc)) from None
         except ConfirmationConflict as exc:
@@ -190,7 +194,7 @@ def business_api(workspace: Workspace, observe: Path) -> APIRouter:
     def state(session_id: str):
         if not workspace.db.is_file():
             raise SessionError("RESOURCE_NOT_FOUND", "找不到可访问的会话")
-        return _ok({**read_state(workspace.db, session_id), **workspace.preferences(session_id)})
+        return _ok(workspace.state(session_id))
 
     @router.patch("/sessions/{session_id}/config", status_code=202)
     def plan_config(session_id: str, body: Configuration, key: Key):
@@ -205,6 +209,7 @@ def business_api(workspace: Workspace, observe: Path) -> APIRouter:
 
     @router.post("/sessions/{session_id}/start", status_code=202)
     def start(session_id: str, body: Expected, key: Key, tasks: BackgroundTasks):
+        workspace.prepare_cloud(session_id)
         operation, _ = accept_start(workspace.db, session_id, body.expected_revision, key)
         return schedule(tasks, session_id, operation)
 
@@ -256,7 +261,9 @@ def business_api(workspace: Workspace, observe: Path) -> APIRouter:
 
     @router.get("/sessions/{session_id}/report")
     def report(session_id: str, revision: int | None = None):
-        return _ok({**read_report(workspace.db, session_id, revision), "source": workspace.preferences(session_id)["source"]})
+        preferences = workspace.preferences(session_id)
+        return _ok({**read_report(workspace.db, session_id, revision), "source": preferences["source"],
+                    "cloud_assistance": preferences["cloud_assistance"]})
 
     @router.post("/sessions/{session_id}/report/generate")
     def build_report(session_id: str, _key: Key):

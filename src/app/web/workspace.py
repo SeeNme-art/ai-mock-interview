@@ -8,6 +8,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Literal
 
+from app.config import Settings
 from app.core.logging_setup import log_event
 from app.db.business import SessionError, check_business_schema, find_session
 from app.db.sqlite import canonical_json, connect, sha256
@@ -16,8 +17,11 @@ from app.kb.store import import_seed
 from app.schemas.materials import MaterialInput, ProjectInput
 from app.schemas.scoring import DIMENSIONS
 from app.services.evaluation import accept_evaluation
+from app.services.budget import CloudLimits, PriceSnapshot, configure_budget
 from app.services.first_question import read_state
 from app.services.materials import MaterialDraft, preview_text, start_draft
+from app.services.model_gateway import DeepSeekGateway
+from app.services.model_steps import InterviewModel
 from app.services.reports import generate_report
 
 EXAMPLE = MaterialInput(
@@ -71,11 +75,21 @@ def _unavailable(_):
 
 
 class Workspace:
-    def __init__(self, directory: Path, seed: Path):
+    def __init__(self, directory: Path, seed: Path, *, settings: Settings | None = None):
         self.db = directory / "interviews.db"
         self.bank = directory / "question_bank.db"
         self._seed = seed
         self._bank_ready = False
+        self.cloud_enabled = settings is not None and settings.llm_web_enabled
+        self._cloud_limits = None
+        self._cloud_model = None
+        self._active_jobs: set[str] = set()
+        if self.cloud_enabled:
+            self._cloud_limits = CloudLimits(settings.llm_web_total_nanos, settings.llm_web_turn_nanos)
+            self._session_limit = settings.llm_web_session_nanos
+            price = PriceSnapshot("deepseek-flash", "deepseek-peak-2026-11-22", 300, 1200)
+            gateway = DeepSeekGateway(self.db, settings, price, max_input_tokens=12_000, cloud_limits=self._cloud_limits)
+            self._cloud_model = InterviewModel(gateway, max_output_tokens=1200, retries=settings.llm_max_retries)
         self._drafts: dict[str, tuple[str, MaterialDraft]] = {}
         self._lock = Lock()
 
@@ -123,28 +137,54 @@ class Workspace:
             db.execute("BEGIN")
             version = check_business_schema(db)
             row = find_session(db, session_id)
-            return {"source": json.loads(row["policy_snapshot_json"]).get("web_source"),
+            policy = json.loads(row["policy_snapshot_json"])
+            return {"source": policy.get("web_source"), "cloud_assistance": policy.get("cloud_assistance", False),
                     "settings": {"directions": json.loads(row["selected_dimensions_json"]),
                                  "difficulty": row["difficulty"] if version >= 2 else "basic",
                                  "question_count": row["question_count"]}}
 
+    def prepare_cloud(self, session_id: str) -> None:
+        if not self.preferences(session_id)["cloud_assistance"] or not self.cloud_enabled:
+            return
+        configure_budget(self.db, session_id, hard_limit_nanos=self._session_limit,
+                         closing_reserve_nanos=min(self._cloud_limits.turn_limit_nanos, self._session_limit // 4),
+                         cloud_limits=self._cloud_limits)
+
+    def state(self, session_id: str) -> dict:
+        state = read_state(self.db, session_id)
+        operation = state["operation"] or {}
+        turn = state["current"] or {}
+        if state["resume"] is None and turn.get("state") == "processing" and operation.get("decision") == "score_pending":
+            state["resume"] = {"operation_id": operation["operation_id"], "kind": "answer", "reason": "score_pending"}
+        return {**state, **self.preferences(session_id)}
+
     def process(self, session_id: str, operation_id: str) -> None:
         """Run an accepted job to its next saved boundary. A restart can resume it explicitly."""
+        with self._lock:
+            if operation_id in self._active_jobs:
+                return
+            self._active_jobs.add(operation_id)
         try:
-            from app.workflow.interview import resume_interview, run_evaluation
+            from app.workflow.interview import resume_interview
 
-            source = self.preferences(session_id)["source"]
+            preferences = self.preferences(session_id)
+            source = preferences["source"]
             evaluator = _example_assessment if source == "example" else _unavailable
-            state = resume_interview(self.db, self.bank, session_id, operation_id=operation_id,
-                                     proposer=lambda context: _local_follow_up(context, source == "example"),
-                                     evaluator=evaluator)
+            model = self._cloud_model if preferences["cloud_assistance"] else None
+            handlers = {"model": model} if model is not None else {
+                "proposer": lambda context: _local_follow_up(context, source == "example"), "evaluator": evaluator,
+            }
+            state = resume_interview(self.db, self.bank, session_id, operation_id=operation_id, **handlers)
             operation = state["operation"]
             if (operation is not None and operation["operation_id"] == operation_id
                     and operation["kind"] == "answer" and operation.get("decision") == "score_pending"):
                 score, _ = accept_evaluation(self.db, session_id, operation_id, state["revision"], f"web-score-{operation_id}")
-                run_evaluation(self.db, session_id, score, evaluator)
-                state = read_state(self.db, session_id)
+                self.process(session_id, score)
+                return
             if state["phase"] == "FINISHED":
                 generate_report(self.db, session_id)
         except Exception as exc:
             log_event("web.operation.pending", operation_id=operation_id, error_type=type(exc).__name__)
+        finally:
+            with self._lock:
+                self._active_jobs.remove(operation_id)
