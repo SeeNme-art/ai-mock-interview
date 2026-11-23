@@ -112,8 +112,9 @@ def finalize_interview(path: Path, session_id: str, operation_id: str, epoch: in
     if done:
         return refs
     result, error_code = None, "MODEL_UNAVAILABLE"
+    diagnostic: dict[str, str] = {}
     if context is not None and evaluator is not None:
-        result, error_code = score_context(context, evaluator)
+        result, error_code = score_context(context, evaluator, diagnostic=diagnostic)
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
         version = check_business_schema(db)
@@ -134,7 +135,8 @@ def finalize_interview(path: Path, session_id: str, operation_id: str, epoch: in
                 db.execute("""INSERT INTO evaluation(id,turn_id,status,model_context_json,created_at,updated_at)
                               VALUES (?,?,'pending','{}',?,?)""", (evaluation_id, context.turn_id, now, now))
             status, version_context = store_evaluation(db, context, evaluation_id, result, error_code, now,
-                                                       evaluator_version=model_version if evaluator else None)
+                                                       evaluator_version=model_version if evaluator else None,
+                                                       diagnostic=diagnostic)
             refs = {**refs, "evaluation_id": evaluation_id, "evaluation_status": status}
         saved = canonical_json(refs)
         db.execute("INSERT INTO operation_step VALUES (?,?,'succeeded',?,1,?)",

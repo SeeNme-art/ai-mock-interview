@@ -99,8 +99,11 @@ def export_report(path: Path, report_id: str) -> str:
     report = read_report(path, row["session_id"], row["revision_no"])
     lines = ["# 模拟面试复盘", "", f"已答 {report['counts']['answered']} 题，有效评分 {report['counts']['scored']} 题。",
              f"跳过 {report['counts']['skipped']} 题，系统失败 {report['counts']['system_failed']} 题。", ""]
-    if json.loads(row["policy_snapshot_json"]).get("web_source") == "example":
+    policy = json.loads(row["policy_snapshot_json"])
+    if policy.get("web_source") == "example":
         lines.extend(["此报告包含示例固定评分。", ""])
+    elif policy.get("cloud_assistance"):
+        lines.extend(["本场启用了实验性 DeepSeek 点评。分数和点评以校验成功的逐题结果为准。", ""])
     for label, score in (("知识题", report["knowledge_score"]), ("项目题", report["project_score"])):
         value = "暂无有效评分" if score is None else f"{score:.1f}"
         lines.append(f"- {label}　{value}")
@@ -109,7 +112,12 @@ def export_report(path: Path, report_id: str) -> str:
         lines.extend(["", f"## 第 {item['seq']} 题 · {label}", ""])
         for exchange in item["exchanges"]:
             lines.extend([_markdown_text(exchange["question"]), "", _markdown_text(exchange["answer"] or "未提交回答"), ""])
-        for dimension, assessment in ((item["evaluation"] or {}).get("assessment") or {}).get("dimensions", {}).items():
+        evaluation = item["evaluation"] or {}
+        if evaluation.get("status") == "failed":
+            failure = evaluation["model_context"].get("validation_failure")
+            detail = f"（{failure['field']}，{failure['message']}）" if failure else ""
+            lines.append("- 本题未产生有效评分" + _markdown_text(detail) + "。")
+        for dimension, assessment in (evaluation.get("assessment") or {}).get("dimensions", {}).items():
             if assessment["applicable"]:
                 lines.append(f"- {dimension}　{assessment['value']}/4　{_markdown_text(assessment['reason'])}")
                 lines.extend("  - 原文依据　" + _markdown_text(evidence["quote"]) for evidence in assessment["evidence"])

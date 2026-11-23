@@ -19,11 +19,13 @@ from app.kb.store import import_seed
 from app.schemas.materials import Confirmation, MaterialInput
 from app.schemas.planning import PlanChanges
 from app.schemas.scoring import DIMENSIONS
-from app.services.answers import accept_answer
-from app.services.evaluation import EVALUATE, accept_evaluation
+from app.services.answers import ExchangeRecord, accept_answer
+from app.services.evaluation import EVALUATE, EvaluationContext, accept_evaluation
 from app.services.first_question import accept_start, prepare_first_question, read_state, start_epoch
 from app.services.materials import confirm_material, start_draft
+from app.services.model_steps import InterviewModel
 from app.services.planning import rebuild_plan
+from app.services.scoring import AssessmentOutputError
 
 try:
     from app.workflow.interview import run_answer, run_evaluation
@@ -37,6 +39,40 @@ else:
 ANSWER = "工作流按预先规定的步骤执行，Agent 在权限内决定下一步。"
 FOLLOWUP_ANSWER = "我会限制可用工具，拒绝调用未授权的接口。"
 PRIVATE_REASON = "合成评分理由，仅供业务记录"
+
+
+class ProjectScoringContractTests(unittest.TestCase):
+    def setUp(self):
+        self.context = EvaluationContext(
+            "turn", "plan", "project", (ExchangeRecord("x1", 0, "你如何验证项目？", ANSWER),), "{}",
+            '{"rubric_version":"project-v1","applicable_dimensions":["validation_evidence"]}', "[]",
+        )
+        self.dimension = {"value": 3, "reason": PRIVATE_REASON, "evidence": [{"exchange_id": "x1", "quote": ANSWER}]}
+
+    def test_cloud_model_only_fills_applicable_project_dimensions(self):
+        gateway = Mock()
+        gateway.invoke_json.return_value = {"dimensions": {"validation_evidence": self.dimension}}
+        result = InterviewModel(gateway, max_output_tokens=200).evaluate("session", "operation", self.context)
+        self.assertEqual((result["task_type"], result["rubric_version"]), ("project", "project-v1"))
+        self.assertEqual(set(result["dimensions"]), set(DIMENSIONS["project"]))
+        self.assertEqual(result["dimensions"]["validation_evidence"]["value"], 3)
+        inactive = result["dimensions"]["implementation_ownership"]
+        self.assertEqual((inactive["applicable"], inactive["value"], inactive["evidence"]), (False, None, []))
+        gateway.invoke_json.assert_called_once()
+
+    def test_cloud_model_cannot_omit_active_dimensions_or_rate_inactive_ones(self):
+        gateway = Mock()
+        model = InterviewModel(gateway, max_output_tokens=200, retries=0)
+        for dimensions, reason, field in (
+            ({}, "MISSING_FIELD", "validation_evidence"),
+            ({"validation_evidence": self.dimension, "communication": self.dimension}, "UNEXPECTED_FIELD", "communication"),
+        ):
+            with self.subTest(reason=reason):
+                gateway.invoke_json.return_value = {"dimensions": dimensions}
+                with self.assertRaises(AssessmentOutputError) as failure:
+                    model.evaluate("session", "operation", self.context)
+                self.assertEqual(failure.exception.diagnostic["reason"], reason)
+                self.assertEqual(failure.exception.diagnostic["field"], f"dimensions.{field}")
 
 
 @unittest.skipUnless(HAS_GRAPH, "install the locked LangGraph dependencies to exercise evaluation")
@@ -176,10 +212,28 @@ class EvaluationTests(unittest.TestCase):
         row = self.evaluation()
         self.assertEqual((row["status"], row["item_score"], row["assessment_json"], row["error_code"]),
                          ("failed", None, None, "OUTPUT_INVALID"))
+        diagnostic = json.loads(row["model_context_json"])["validation_failure"]
+        self.assertEqual((diagnostic["stage"], diagnostic["reason"], diagnostic["field"]),
+                         ("business", "EVIDENCE_NOT_FOUND", "dimensions.correctness.evidence"))
+        self.assertNotIn("从未提交的答复", row["model_context_json"])
         self.assertEqual(self.state()["operation"]["evaluation_status"], "failed")
         with closing(connect(self.db, readonly=True)) as db:
             self.assertEqual(db.execute("SELECT answer_text FROM exchange").fetchone()[0], ANSWER)
             self.assertEqual(db.execute("SELECT outcome FROM plan_item WHERE seq=1").fetchone()[0], "answered")
+
+    def test_schema_diagnostic_does_not_keep_unknown_field_names_or_values(self):
+        self.stop_probing()
+        operation, _ = self.queue()
+
+        def invalid(context):
+            return {**self.sample(context), "RAW_UNTRUSTED_FIELD": "RAW_UNTRUSTED_VALUE"}
+
+        run_evaluation(self.db, self.session, operation, invalid)
+        context = self.evaluation()["model_context_json"]
+        self.assertNotIn("RAW_UNTRUSTED", context)
+        diagnostic = json.loads(context)["validation_failure"]
+        self.assertEqual((diagnostic["stage"], diagnostic["reason"], diagnostic["field"]),
+                         ("schema", "UNEXPECTED_FIELD", "*"))
 
     def test_real_zero_is_a_ready_result(self):
         self.stop_probing()

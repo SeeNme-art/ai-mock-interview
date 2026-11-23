@@ -25,7 +25,6 @@ from app.services.answers import accept_answer
 from app.services.budget import CloudLimits, PriceSnapshot, Usage, configure_budget, invoke_budgeted
 from app.services.document_text import MAX_DOCUMENT_BYTES
 from app.services.model_gateway import DeepSeekGateway
-from app.schemas.scoring import DIMENSIONS
 
 
 def synthetic_docx(paragraphs, *, preamble=""):
@@ -170,6 +169,7 @@ class WebInterviewTests(unittest.TestCase):
 
     def test_cloud_mode_is_explicit_and_uses_validated_feedback(self):
         contexts = []
+        scoring_prompts = {}
 
         def transport(body, _key, _timeout):
             request = json.loads(body)
@@ -180,13 +180,19 @@ class WebInterviewTests(unittest.TestCase):
                 return 401, b"ignored provider error"
             ref = {"exchange_id": exchanges[-1]["id"], "quote": exchanges[-1]["answer"]}
             if "rubric" in context:
-                rubric, task = context["rubric"], context["task_type"]
-                active = set(rubric["applicable_dimensions"])
-                result = {"task_type": task, "rubric_version": rubric["rubric_version"], "dimensions": {
-                    name: {"applicable": name in active, "value": 3 if name in active else None,
-                           "reason": "有具体核对步骤", "evidence": [ref] if name in active else []}
-                    for name in DIMENSIONS[task]
+                active = context["rubric"]["applicable_dimensions"]
+                prompts = scoring_prompts.setdefault(exchanges[-1]["answer"], [])
+                prompts.append(request["messages"][0]["content"])
+                result = {"dimensions": {
+                    name: {"value": 3, "reason": "有具体核对步骤", "evidence": [ref]}
+                    for name in active
                 }}
+                if exchanges[-1]["answer"] == "记录命中的题目和修订号" and len(prompts) == 1:
+                    del result["dimensions"]["correctness"]
+                if exchanges[-1]["answer"] == "合成引用校验":
+                    ref["quote"] = "REJECTED_PRIVATE_MARKER"
+            elif exchanges[-1]["answer"] == "合成引用校验":
+                result = {"should_probe": False, "reason": "直接进入评分"}
             elif len(exchanges) == 1:
                 result = {"should_probe": True, "purpose": "deepen", "reason": "核对具体步骤",
                           "evidence_refs": [ref], "probe_question": "你会记录哪两项检查结果？"}
@@ -226,7 +232,10 @@ class WebInterviewTests(unittest.TestCase):
             self.assertEqual(receipt, self.request("POST", route, key=f"cloud-answer-{index}", body=body, status=202))
         state = self.request("GET", base + "/state")
         self.assertEqual(state["progress"]["scored"], 1)
-        self.assertEqual(len(contexts), 3)
+        self.assertEqual(len(contexts), 4)
+        prompts = scoring_prompts["记录命中的题目和修订号"]
+        self.assertEqual(len(prompts), 2)
+        self.assertIn("dimensions.correctness", prompts[1])
         self.assertNotIn("RAW_PRIVATE_MARKER", str(contexts))
         self.request("POST", base + "/advance", key="next-cloud", status=202,
                      body={"expected_revision": state["revision"]})
@@ -237,12 +246,35 @@ class WebInterviewTests(unittest.TestCase):
         state = self.request("GET", base + "/state")
         self.assertEqual((state["progress"]["answered"], state["progress"]["scored"]), (2, 1))
         self.assertIsNone(state["resume"])
+        self.request("POST", base + "/advance", key="next-validation", status=202,
+                     body={"expected_revision": state["revision"]})
+        state = self.request("GET", base + "/state")
+        turn = state["current"]
+        self.request("POST", f"/turns/{turn['turn_id']}/answer", key="invalid-evidence", status=202, body={
+            "exchange_id": turn["exchange_id"], "expected_revision": state["revision"], "answer": "合成引用校验"})
+        state = self.request("GET", base + "/state")
+        self.assertEqual((state["progress"]["answered"], state["progress"]["scored"]), (3, 1))
+        prompts = scoring_prompts["合成引用校验"]
+        self.assertEqual(len(prompts), 2)
+        self.assertIn("dimensions.correctness.evidence", prompts[1])
+        self.assertNotIn("REJECTED_PRIVATE_MARKER", prompts[1])
         self.request("POST", base + "/abort", key="abort", status=202,
                      body={"expected_revision": state["revision"], "reason": "user_cancel"})
         report = self.request("GET", base + "/report")
         self.assertTrue(report["cloud_assistance"])
         self.assertEqual(report["knowledge_score"], 75.0)
+        first = report["items"][0]["evaluation"]["assessment"]
+        self.assertEqual((first["task_type"], first["rubric_version"]), ("knowledge", "knowledge-v1"))
+        self.assertIs(first["dimensions"]["relevance"]["applicable"], False)
+        self.assertIsNone(first["dimensions"]["relevance"]["value"])
         self.assertEqual(report["items"][1]["evaluation"]["error_code"], "MODEL_REQUEST_REJECTED")
+        failed = report["items"][2]["evaluation"]
+        self.assertEqual((failed["error_code"], failed["item_score"]), ("OUTPUT_INVALID", None))
+        self.assertEqual(failed["model_context"]["validation_failure"]["reason"], "EVIDENCE_NOT_FOUND")
+        markdown = self.client.get(f"/api/v1/reports/{report['id']}/export").text
+        self.assertIn("本场启用了实验性 DeepSeek 点评", markdown)
+        self.assertIn("dimensions.correctness.evidence", markdown)
+        self.assertNotIn("REJECTED_PRIVATE_MARKER", markdown)
         clone = self.request("POST", base + "/clone", key="clone", status=201)
         self.assertFalse(self.request("GET", f"/sessions/{clone['session_id']}/state")["cloud_assistance"])
 

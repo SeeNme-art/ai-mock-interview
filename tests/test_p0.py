@@ -229,15 +229,18 @@ server.run()
                                 self.assertEqual(response.status, 200)
                         with self.assertRaises(HTTPError) as invalid:
                             opener.open(base + "/api/v1/observe/traces?limit=-1", timeout=2)
-                        self.assertEqual(invalid.exception.code, 422)
+                        with invalid.exception as response:
+                            self.assertEqual(response.code, 422)
                         for route in ("/observe/traces/not_found", "/api/v1/observe/traces/not_found"):
                             with self.assertRaises(HTTPError) as missing:
                                 opener.open(base + route, timeout=2)
-                            self.assertEqual(missing.exception.code, 404)
+                            with missing.exception as response:
+                                self.assertEqual(response.code, 404)
                     else:
                         with self.assertRaises(HTTPError) as caught:
                             opener.open(base + "/observe", timeout=2)
-                        self.assertEqual(caught.exception.code, 404)
+                        with caught.exception as response:
+                            self.assertEqual(response.code, 404)
                 finally:
                     # Wait for the actual server's lifespan teardown before Windows releases its database.
                     process.stdin.close()

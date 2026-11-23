@@ -276,7 +276,11 @@ async function reportPage() {
         body.append(node("h3", exchange.question), node("p", exchange.answer ?? "未提交回答", "answer-body"));
       }
       const evaluation = item.evaluation;
-      if (evaluation?.status === "failed") body.append(node("p", "本题未产生有效评分。", "muted"));
+      if (evaluation?.status === "failed") {
+        const failure = evaluation.model_context?.validation_failure;
+        const detail = failure ? `（${failure.field}，${failure.message}）` : "";
+        body.append(node("p", `本题未产生有效评分${detail}。`, "muted"));
+      }
       for (const [name, result] of Object.entries(evaluation?.assessment?.dimensions ?? {})) {
         if (!result.applicable) continue;
         body.append(node("h3", `${dimensions[name] ?? name} · ${result.value}/4`), node("p", result.reason));

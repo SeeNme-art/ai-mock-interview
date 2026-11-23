@@ -15,7 +15,6 @@ from app.kb.seed import read_seed
 from app.kb.store import import_seed
 from app.schemas.materials import Confirmation, MaterialInput, ProjectInput
 from app.schemas.planning import PlanChanges
-from app.schemas.scoring import DIMENSIONS
 from app.services.advancement import accept_advance
 from app.services.answers import accept_answer
 from app.services.budget import PriceSnapshot, configure_budget, read_budget
@@ -44,13 +43,11 @@ def _fixture_transport(case: str):
         evidence = [{"exchange_id": last["id"], "quote": last["answer"]}]
         if "rubric" in context:
             rubric = context["rubric"]
-            task = context["task_type"]
-            dimensions = set(rubric["applicable_dimensions"])
-            result = {"task_type": task, "rubric_version": rubric["rubric_version"], "dimensions": {
-                key: {"applicable": key in dimensions, "value": 3 if key in dimensions else None,
+            result = {"dimensions": {
+                key: {"value": 3,
                       "reason": "固定评分仅用于验证问答、证据与报告贯通",
-                      "evidence": evidence if key in dimensions else []}
-                for key in DIMENSIONS[task]
+                      "evidence": evidence}
+                for key in rubric["applicable_dimensions"]
             }}
         else:
             should_probe = last["round_no"] < 2 and context["asked_questions"] == [

@@ -7,20 +7,27 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 import sqlite3
-from typing import Callable
+from typing import Callable, TypeVar
 from uuid import uuid4
+
+from pydantic import ValidationError
 
 from app.db.business import (
     OWNER_ID, SessionError, check_business_schema, ensure_session_idle, find_operation, find_replay,
     find_session, upgrade_business, validate_request_key,
 )
 from app.db.sqlite import canonical_json, connect, sha256
-from app.schemas.scoring import Assessment, TaskType
+from app.schemas.scoring import (
+    Assessment, DIMENSIONS, DimensionAssessment, EvidenceRef, ModelAssessment, ScoringInput, TaskType, Uncertainty,
+)
 from app.services.answers import ExchangeRecord, read_exchanges
 from app.services.question_delivery import finish_if_all_closed
-from app.services.scoring import ScoredAssessment, score_assessment
+from app.services.scoring import AssessmentOutputError, ScoredAssessment, score_assessment
 
 EVALUATE = "evaluate_answer"
+_SAFE_FIELDS = (set(Assessment.model_fields) | set(DimensionAssessment.model_fields) |
+                set(EvidenceRef.model_fields) | set(Uncertainty.model_fields) |
+                set(DIMENSIONS["knowledge"]) | set(DIMENSIONS["project"]))
 
 
 @dataclass(frozen=True)
@@ -35,6 +42,7 @@ class EvaluationContext:
 
 
 DemoEvaluator = Callable[[EvaluationContext], object]
+ScoringSchema = TypeVar("ScoringSchema", bound=ScoringInput)
 
 
 def _context(db: sqlite3.Connection, session_id: str, answer_operation: sqlite3.Row) -> EvaluationContext:
@@ -122,15 +130,60 @@ def _load_work(db: sqlite3.Connection, session_id: str, operation_id: str, epoch
     return context, {"turn_id": context.turn_id, "evaluation_id": request["evaluation_id"]}
 
 
-def score_context(context: EvaluationContext, evaluator: DemoEvaluator) -> tuple[ScoredAssessment | None, str | None]:
+def _validate_schema(schema: type[ScoringSchema], value: object) -> ScoringSchema:
+    try:
+        return schema.model_validate(value)
+    except ValidationError as exc:
+        error = exc.errors(include_input=False, include_context=False, include_url=False)[0]
+        field = ".".join(part if part in _SAFE_FIELDS else "*" for part in error["loc"]) or "assessment"
+        reason = {"missing": "MISSING_FIELD", "extra_forbidden": "UNEXPECTED_FIELD"}.get(error["type"], "INVALID_FIELD")
+        if reason == "INVALID_FIELD" and field.endswith(".value"):
+            reason = "INVALID_SCORE"
+        raise AssessmentOutputError("schema", reason, field) from None
+
+
+def complete_model_assessment(context: EvaluationContext, value: object) -> dict:
+    model = _validate_schema(ModelAssessment, value)
+    rubric = json.loads(context.rubric_snapshot)
+    active = set(rubric["applicable_dimensions"])
+    missing = sorted(active - model.dimensions.keys())
+    unexpected = sorted(model.dimensions.keys() - active)
+    if missing:
+        raise AssessmentOutputError("schema", "MISSING_FIELD", f"dimensions.{missing[0]}")
+    if unexpected:
+        raise AssessmentOutputError("schema", "UNEXPECTED_FIELD", f"dimensions.{unexpected[0]}")
+    return {
+        "task_type": context.task_type,
+        "rubric_version": rubric["rubric_version"],
+        "dimensions": {
+            name: ({"applicable": True, **model.dimensions[name].model_dump(mode="json")} if name in active else
+                   {"applicable": False, "value": None, "reason": "本题未考察此维度。", "evidence": []})
+            for name in DIMENSIONS[context.task_type]
+        },
+        "uncertainties": [item.model_dump(mode="json") for item in model.uncertainties],
+    }
+
+
+def validate_evaluation_response(context: EvaluationContext, value: object) -> ScoredAssessment:
     rubric = json.loads(context.rubric_snapshot)
     answers = {item.id: item.answer for item in context.exchanges if item.answer is not None}
     source_ids = {source["id"] for source in json.loads(context.source_snapshot)}
+    assessment = _validate_schema(Assessment, value)
+    return score_assessment(assessment, task_type=context.task_type, rubric_version=rubric["rubric_version"],
+                            applicable_dimensions=rubric["applicable_dimensions"], answers=answers, source_refs=source_ids)
+
+
+def score_context(context: EvaluationContext, evaluator: DemoEvaluator, *,
+                  diagnostic: dict[str, str] | None = None) -> tuple[ScoredAssessment | None, str | None]:
     try:
-        result = score_assessment(Assessment.model_validate(evaluator(context)), task_type=context.task_type,
-                                  rubric_version=rubric["rubric_version"], applicable_dimensions=rubric["applicable_dimensions"],
-                                  answers=answers, source_refs=source_ids)
+        result = validate_evaluation_response(context, evaluator(context))
+    except AssessmentOutputError as exc:
+        if diagnostic is not None:
+            diagnostic.update(exc.diagnostic)
+        return None, "OUTPUT_INVALID"
     except SessionError as exc:
+        if exc.code == "OUTPUT_INVALID" and diagnostic is not None:
+            diagnostic.update(AssessmentOutputError("gateway", "INVALID_JSON", "response").diagnostic)
         if exc.code in {"BUDGET_EXHAUSTED", "TURN_BUDGET_EXHAUSTED", "MODEL_UNAVAILABLE", "MODEL_REQUEST_REJECTED",
                         "OUTPUT_INVALID", "CALL_ALREADY_RECORDED", "CLOUD_BUDGET_MISMATCH", "BUDGET_NOT_CONFIGURED",
                         "INPUT_TOO_LARGE", "USAGE_OVER_PLAN"}:
@@ -145,11 +198,13 @@ def score_context(context: EvaluationContext, evaluator: DemoEvaluator) -> tuple
 
 def store_evaluation(db: sqlite3.Connection, context: EvaluationContext, evaluation_id: str,
                      result: ScoredAssessment | None, error_code: str | None, now: str, *,
-                     evaluator_version: str | None = "local-demo-v1") -> tuple[str, str]:
+                     evaluator_version: str | None = "local-demo-v1",
+                     diagnostic: dict[str, str] | None = None) -> tuple[str, str]:
     question = json.loads(context.question_snapshot)
     rubric = json.loads(context.rubric_snapshot)
     version_context = canonical_json({"evaluator": evaluator_version, "rubric_version": rubric["rubric_version"],
-                                      "question_id": question.get("id"), "question_revision": question.get("revision")})
+                                      "question_id": question.get("id"), "question_revision": question.get("revision"),
+                                      **({"validation_failure": diagnostic} if diagnostic else {})})
     status = "ready" if result is not None else "failed"
     normalized = canonical_json(result.assessment.model_dump(mode="json")) if result is not None else None
     db.execute("""UPDATE evaluation SET status=?,assessment_json=?,item_score=?,error_code=?,model_context_json=?,updated_at=?
@@ -168,7 +223,8 @@ def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: in
         return {"turn_id": refs["turn_id"], "evaluation_id": refs["evaluation_id"]}
     if evaluator is None:
         raise SessionError("CONFIGURATION_ERROR", "本批需显式提供本地评分样例")
-    result, error_code = score_context(context, evaluator)
+    diagnostic: dict[str, str] = {}
+    result, error_code = score_context(context, evaluator, diagnostic=diagnostic)
 
     with closing(connect(path)) as db, db:
         db.execute("BEGIN IMMEDIATE")
@@ -180,7 +236,7 @@ def process_evaluation(path: Path, session_id: str, operation_id: str, epoch: in
         now = datetime.now(UTC).isoformat()
         question = json.loads(context.question_snapshot)
         eval_status, version_context = store_evaluation(db, context, refs["evaluation_id"], result, error_code, now,
-                                                       evaluator_version=model_version)
+                                                       evaluator_version=model_version, diagnostic=diagnostic)
         op_status = "succeeded" if result is not None else "failed"
         refs_json = canonical_json({**refs, "evaluation_status": eval_status})
         db.execute("UPDATE turn SET state='closed',closed_at=? WHERE id=?", (now, context.turn_id))

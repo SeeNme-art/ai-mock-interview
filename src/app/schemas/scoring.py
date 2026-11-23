@@ -31,18 +31,27 @@ class EvidenceRef(ScoringInput):
     end: Offset | None = None
 
 
-class DimensionAssessment(ScoringInput):
-    applicable: bool
-    value: Rating | None
+class ModelDimensionAssessment(ScoringInput):
+    value: Rating
     reason: NonBlank
     evidence: list[EvidenceRef]
     evidence_absence_reason: NonBlank | None = None
     source_refs: list[NonBlank] = Field(default_factory=list)
 
 
+class DimensionAssessment(ModelDimensionAssessment):
+    value: Rating | None
+    applicable: bool
+
+
 class Uncertainty(ScoringInput):
     type: NonBlank
     message: NonBlank
+
+
+class ModelAssessment(ScoringInput):
+    dimensions: dict[KnowledgeDimension | ProjectDimension, ModelDimensionAssessment]
+    uncertainties: list[Uncertainty] = Field(default_factory=list)
 
 
 class Assessment(ScoringInput):

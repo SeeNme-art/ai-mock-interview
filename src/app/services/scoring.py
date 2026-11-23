@@ -10,6 +10,30 @@ from app.schemas.scoring import CONTENT_DIMENSIONS, DIMENSIONS, Assessment, Evid
 Outcome = Literal["answered", "skipped", "unanswered", "generation_failed"]
 EvaluationStatus = Literal["pending", "ready", "failed"]
 
+VALIDATION_MESSAGES = {
+    "MISSING_FIELD": "评分输出缺少必填字段",
+    "UNEXPECTED_FIELD": "评分输出包含未约定的字段",
+    "INVALID_SCORE": "分值必须为 0 至 4 的整数",
+    "INVALID_FIELD": "评分字段的类型或取值无效",
+    "RUBRIC_MISMATCH": "题型或评分规则版本与本题不符",
+    "DIMENSION_SET_MISMATCH": "评分结果必须包含该题型的全部维度",
+    "APPLICABILITY_MISMATCH": "评分适用性与冻结的考察维度不一致",
+    "INVALID_SOURCE": "评分引用了不在本题快照中的来源",
+    "MISSING_SCORE": "已考察的维度须给出分值",
+    "MISSING_EVIDENCE": "已考察维度缺少证据或缺证说明",
+    "INAPPLICABLE_RESULT": "未考察的维度不能携带分值或答案引用",
+    "EVIDENCE_NOT_FOUND": "评分证据未在该题的已提交答案中找到",
+    "INVALID_JSON": "模型响应格式无效或不完整",
+}
+
+
+class AssessmentOutputError(ValueError):
+    """A fixed reason and field can be persisted without retaining rejected content."""
+
+    def __init__(self, stage: str, reason: str, field: str):
+        super().__init__(VALIDATION_MESSAGES[reason])
+        self.diagnostic = {"stage": stage, "reason": reason, "field": field, "message": str(self)}
+
 
 @dataclass(frozen=True)
 class ScoredAssessment:
@@ -30,18 +54,22 @@ def locate_evidence(ref: EvidenceRef, answers: Mapping[str, str]) -> EvidenceRef
     answer = answers.get(ref.exchange_id, "")
     start = answer.find(ref.quote)
     if not ref.quote.strip() or start < 0:
-        raise ValueError("评分证据未在该题的已提交答案中找到")
+        raise AssessmentOutputError("business", "EVIDENCE_NOT_FOUND", "evidence")
     return ref.model_copy(update={"start": start, "end": start + len(ref.quote)})
 
 
 def score_assessment(assessment: Assessment, *, task_type: TaskType, rubric_version: str,
                      applicable_dimensions: Collection[str], answers: Mapping[str, str],
                      source_refs: Collection[str] = ()) -> ScoredAssessment:
-    if assessment.task_type != task_type or assessment.rubric_version != rubric_version:
-        raise ValueError("题型或评分规则版本与正式题目不符")
+    if assessment.task_type != task_type:
+        raise AssessmentOutputError("business", "RUBRIC_MISMATCH", "task_type")
+    if assessment.rubric_version != rubric_version:
+        raise AssessmentOutputError("business", "RUBRIC_MISMATCH", "rubric_version")
     keys = set(DIMENSIONS[task_type])
     if assessment.dimensions.keys() != keys:
-        raise ValueError("评分结果必须包含该题型的全部维度")
+        missing = sorted(keys - assessment.dimensions.keys())
+        field = f"dimensions.{missing[0]}" if missing else "dimensions"
+        raise AssessmentOutputError("business", "DIMENSION_SET_MISMATCH", field)
     active = set(applicable_dimensions)
     if not active <= keys or not active & CONTENT_DIMENSIONS[task_type]:
         raise ValueError("冻结的评分目标缺少合法的内容维度")
@@ -51,21 +79,24 @@ def score_assessment(assessment: Assessment, *, task_type: TaskType, rubric_vers
     verified = {}
     dimension_values = []
     for key, dimension in assessment.dimensions.items():
+        field = f"dimensions.{key}"
         if dimension.applicable != (key in active):
-            raise ValueError("评分适用性与冻结的考察维度不一致")
+            raise AssessmentOutputError("business", "APPLICABILITY_MISMATCH", f"{field}.applicable")
         if not set(dimension.source_refs).issubset(source_refs):
-            raise ValueError("评分引用了不在本题快照中的来源")
+            raise AssessmentOutputError("business", "INVALID_SOURCE", f"{field}.source_refs")
         if dimension.applicable:
             if dimension.value is None:
-                raise ValueError("已考察的维度须给出分值")
+                raise AssessmentOutputError("business", "MISSING_SCORE", f"{field}.value")
             if not dimension.evidence and dimension.evidence_absence_reason is None:
-                raise ValueError("已考察维度缺少证据或缺证说明")
+                raise AssessmentOutputError("business", "MISSING_EVIDENCE", f"{field}.evidence")
             dimension_values.append((key, dimension.value))
         elif dimension.value is not None or dimension.evidence:
-            raise ValueError("未考察的维度不能携带分值或答案引用")
-        verified[key] = dimension.model_copy(deep=True, update={
-            "evidence": [locate_evidence(ref, answers) for ref in dimension.evidence],
-        })
+            raise AssessmentOutputError("business", "INAPPLICABLE_RESULT", field)
+        try:
+            evidence = [locate_evidence(ref, answers) for ref in dimension.evidence]
+        except AssessmentOutputError as exc:
+            raise AssessmentOutputError("business", "EVIDENCE_NOT_FOUND", f"{field}.evidence") from exc
+        verified[key] = dimension.model_copy(deep=True, update={"evidence": evidence})
     normalized = assessment.model_copy(deep=True, update={"dimensions": verified})
     return ScoredAssessment(normalized, tuple(dimension_values))
 
